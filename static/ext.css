@@ -1,0 +1,92 @@
+body {
+  font-family: "Helvetica Neue", sans-serif;
+}
+
+div.main {
+  width: 800px;
+  margin: auto;
+}
+
+div.header {
+  border-bottom: 1px solid black;
+  margin-bottom: 10px;
+}
+
+div.header h1 {
+  font-size: 18px;
+  margin-bottom: 5px;
+}
+
+div.description {
+  background: #EEEEEE;
+  border-radius: 3px;
+  border: 1px solid lightgrey;
+  margin-bottom: 10px;
+  font-size: 12px;
+  padding: 4px;
+}
+
+div.content {
+  display: flex;
+}
+
+div.content div.col {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+div.content div.col:first-child {
+  margin-right: 20px;
+}
+
+textarea {
+  height: 120px;
+  flex: 1;
+  line-height: 1.2;
+  resize: none;
+}
+
+input {
+  flex: 1;
+  line-height: 1.2;
+  resize: none;
+}
+
+
+label {
+  margin-bottom: 5px;
+}
+
+div.text-collab-ext {
+  position: absolute;
+  pointer-events: none;
+}
+
+div.text-collab-ext div.text-collab-ext-scroller {
+  position: absolute;
+  width: 100%;
+}
+
+div.text-collab-ext div.collaborator-cursor {
+  position: absolute;
+  width: 2px;
+  opacity: 0.8;
+}
+
+div.text-collab-ext div.collaborator-cursor-tooltip {
+  position: absolute;
+  white-space: nowrap;
+  color: #FFFFFF;
+  text-shadow: 0 0 1px #000000;
+  opacity: 1.0;
+  font-size: 12px;
+  padding: 2px;
+  font-family: sans-serif;
+
+  transition: opacity 0.5s ease-out;
+  -webkit-transition: opacity 0.5s ease-out;
+  -moz-transition: opacity 0.5s ease-out;
+  -ms-transition: opacity 0.5s ease-out;
+  -o-transition: opacity 0.5s ease-out;
+}

@@ -1,0 +1,21 @@
+html, body {
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+h1, h2 {
+  text-align: center;
+}
+
+.container {
+  display: flex;
+}
+
+.editor {
+  margin: 10px;
+  flex-grow: 1;
+  width: 40%;
+}
+
+#editor-two {
+  height: 200px;
+}

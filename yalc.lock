@@ -1,0 +1,28 @@
+{
+  "version": "v1",
+  "packages": {
+    "@minervaproject/ot-json0": {
+      "signature": "77dcbb08cad960cca83c1284ce6469eb",
+      "file": true
+    },
+    "@teamwork/sharedb": {
+      "signature": "187c6949aaccdee290ab934e810b31cf",
+      "file": true,
+      "replaced": "houshuang/sharedb"
+    },
+    "rich-text": {
+      "signature": "2ecc70435deae9f6af7e962d523899aa",
+      "file": true,
+      "replaced": "houshuang/rich-text#presence"
+    },
+    "sharedb-string-binding": {
+      "signature": "58eda3cdfff1ed845bd8be8cb11f732d",
+      "file": true,
+      "replaced": "^1.0.0"
+    },
+    "@convergence/html-text-collab-ext": {
+      "signature": "46fdd84c7c0fec767f76eeb79a2fb6d3",
+      "file": true
+    }
+  }
+}

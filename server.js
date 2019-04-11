@@ -18,14 +18,15 @@ createDoc(startServer);
 // Create initial document then fire callback
 function createDoc(callback) {
   var connection = backend.connect();
-  var doc = connection.get('examples', 'stian2');
+  var doc = connection.get('examples', 'stian5');
   doc.fetch(function(err) {
     if (err) throw err;
     if (doc.type === null) {
       doc.create(
         {
           text: { ops: [{ insert: '\n' }] },
-          text2: { ops: [{ insert: '\n' }] }
+          text2: { ops: [{ insert: '\n' }] },
+          example: '',example2: '',bike: false, car: false
         },
         'json0',
         callback

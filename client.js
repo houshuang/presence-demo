@@ -7,6 +7,8 @@ var Stringify = require('json-stable-stringify');
 var HtmlTextCollabExt = require('@convergence/html-text-collab-ext');
 var StringBinding = require('sharedb-string-binding');
 
+const { unpackPresence } = json0.type;
+
 Quill.register('modules/cursors', QuillCursors);
 
 presence1 = {};
@@ -123,18 +125,18 @@ doc.subscribe(function(err) {
   });
   var cursors = quill.getModule('cursors');
   var cursors2 = quill2.getModule('cursors');
-  doc.submitPresence(
-    {
-      u: uid,
-      userInfo: { uid }
-    },
-    err => {
-      if (err) {
-        throw err;
-      }
-      doc.requestReplyPresence = false;
-    }
-  );
+  //doc.submitPresence(
+  //  {
+  //    u: uid,
+  //    userInfo: { uid }
+  //  },
+  //  err => {
+  //    if (err) {
+  //      throw err;
+  //    }
+  //    doc.requestReplyPresence = false;
+  //  }
+  //);
 
   quill.setContents(doc.data.text);
   quill2.setContents(doc.data.text2);
@@ -197,16 +199,24 @@ doc.subscribe(function(err) {
       .join('');
 
     srcList.forEach(function(src) {
-      if (doc.presence[src] && doc.presence[src].u) {
-        var userid = doc.presence[src].u;
+      if(!doc.presence[src]) return;
+
+      const {
+        presencePath,
+        presenceType,
+        subPresence
+      } = unpackPresence(doc.presence[src]);
+
+      if (subPresence.u) {
+        var userid = subPresence.u;
         if (
           userid !== uid &&
-          doc.presence[src].cursor &&
-          doc.presence[src].cursor.s &&
-          doc.presence[src].cursor.s.length > 0
+          subPresence &&
+          subPresence.s &&
+          subPresence.s.length > 0
         ) {
           // TODO: Can QuillCursors support multiple selections?
-          var sel = doc.presence[src].cursor.s[0];
+          var sel = subPresence.s[0];
 
           // Use Math.abs because the sharedb presence type
           // supports reverse selections, but I don't think
@@ -215,7 +225,7 @@ doc.subscribe(function(err) {
           var min = Math.min(sel[0], sel[1]);
 
           // Re-creating an existing cursor is a no-op
-          if (doc.presence[src].p && doc.presence[src].p[0] === 'text') {
+          if (presencePath && presencePath[0] === 'text') {
             cursors.createCursor(userid, userid, uidColor(userid));
             cursors.moveCursor(userid, { index: min, length: len });
             cursors2.removeCursor(userid);
@@ -228,15 +238,15 @@ doc.subscribe(function(err) {
               presence1[userid] = null;
             }
           } else if (
-            doc.presence[src].p &&
-            doc.presence[src].p[0] === 'text2'
+            presencePath &&
+            presencePath[0] === 'text2'
           ) {
             cursors2.createCursor(userid, userid, uidColor(userid));
             cursors2.moveCursor(userid, { index: min, length: len });
             cursors.removeCursor(userid);
           } else if (
-            doc.presence[src].p &&
-            doc.presence[src].p[0] === 'example'
+            presencePath &&
+            presencePath[0] === 'example'
           ) {
             cursors2.removeCursor(userid);
             cursors.removeCursor(userid);
@@ -255,8 +265,8 @@ doc.subscribe(function(err) {
             presence1[userid].setSelection({ anchor: sel[0], target: sel[1] });
             presence1[userid].flashCursorToolTip(2);
           } else if (
-            doc.presence[src].p &&
-            doc.presence[src].p[0] === 'example2'
+            presencePath &&
+            presencePath[0] === 'example2'
           ) {
             cursors2.removeCursor(userid);
             cursors.removeCursor(userid);
@@ -282,8 +292,16 @@ doc.subscribe(function(err) {
 
   doc.on('presence', function(srcList, submitted) {
     srcList.forEach(function(src) {
-      var userid = doc.presence[src].u;
-      if (doc.presence[src].p && doc.presence[src].p[0] === 'car') {
+      if(!doc.presence[src]) return;
+
+      const {
+        presencePath,
+        presenceType,
+        subPresence
+      } = unpackPresence(doc.presence[src]);
+
+      var userid = subPresence.u;
+      if (presencePath && presencePath[0] === 'car') {
         carP[userid] = true;
         bikeP[userid] = false;
         updateCarBikeP();
@@ -297,7 +315,7 @@ doc.subscribe(function(err) {
           selectionManager.removeCollaborator(userid);
           presence2[userid] = null;
         }
-      } else if (doc.presence[src].p && doc.presence[src].p[0] === 'bike') {
+      } else if (presencePath && presencePath[0] === 'bike') {
         carP[userid] = false;
         bikeP[userid] = true;
         updateCarBikeP();
@@ -339,22 +357,29 @@ doc.subscribe(function(err) {
 
 function updateCursorText(range, uid, text) {
   if (range) {
-    doc.submitPresence({
-      u: uid,
-      p: [text],
-      cursor: { c: 0, s: [range] }
-    });
+    doc.submitPresence([
+      text,
+      'rich-text',
+      {
+        u: uid,
+        c: 0,
+        s: [range]
+      }
+    ]);
   }
 }
 
 function updateCursor(range, uid, text) {
   if (range) {
-    doc.submitPresence({
-      u: uid,
-      p: [text],
-      t: 'rich-text',
-      cursor: { c: 0, s: [[range.index, range.index + range.length]] }
-    });
+    doc.submitPresence([
+      text,
+      'rich-text',
+      {
+        u: uid,
+        c: 0,
+        s: [[range.index, range.index + range.length]]
+      }
+    ]);
   }
 }
 

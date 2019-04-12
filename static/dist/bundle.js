@@ -1,1737 +1,4 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
-var sharedb = require('@teamwork/sharedb/lib/client');
-var richText = require('rich-text');
-var json0 = require('@houshuang/ot-json0');
-var Quill = require('quill');
-var QuillCursors = require('quill-cursors');
-var Stringify = require('json-stable-stringify');
-var HtmlTextCollabExt = require('@convergence/html-text-collab-ext');
-var StringBinding = require('sharedb-string-binding');
-
-Quill.register('modules/cursors', QuillCursors);
-
-presence1 = {};
-presence2 = {};
-
-json0.type.registerSubtype(richText.type);
-sharedb.types.register(json0.type);
-
-const textarea = document.getElementById('example');
-const textinput = document.getElementById('example2');
-const car = document.getElementById('car');
-const bike = document.getElementById('bike');
-const carP = {};
-const bikeP = {};
-
-textarea.addEventListener('focus', function() {
-  window.setTimeout(
-    () =>
-      updateCursorText(
-        [textarea.selectionStart, textarea.selectionStart],
-        uid,
-        'example'
-      ),
-    100
-  );
-});
-textinput.addEventListener('focus', function() {
-  window.setTimeout(
-    () =>
-      updateCursorText(
-        [textarea.selectionStart, textarea.selectionStart],
-        uid,
-        'example2'
-      ),
-    100
-  );
-});
-const carPresence = document.getElementById('presenceCar');
-const bikePresence = document.getElementById('presenceBike');
-
-// Open WebSocket connection to ShareDB server
-var socket = new WebSocket('ws://' + window.location.host);
-var connection = new sharedb.Connection(socket);
-
-// For testing reconnection
-window.disconnect = function() {
-  connection.close();
-};
-window.connect = function() {
-  var socket = new WebSocket('ws://' + window.location.host);
-  connection.bindToSocket(socket);
-};
-
-var names = [
-  'Peter',
-  'Anna',
-  'John',
-  'Ole',
-  'Niels',
-  'Gregor',
-  'Chen Li',
-  'Ananda',
-  'Rupert',
-  'Ben'
-];
-
-// Helper functions for nicely displaying uid
-function uidColor(uid) {
-  var colors = [
-    'red',
-    'blue',
-    'green',
-    'purple',
-    'orange',
-    'olive',
-    'maroon',
-    'yellow',
-    'lime',
-    'teal'
-  ];
-  return colors[names.findIndex(x => x === uid)];
-}
-
-function renderNameplate(uid) {
-  var css = 'background-color: ' + uidColor(uid) + ';';
-  document.getElementById('nameplate').style = css;
-  document.getElementById('nameplate').innerText = uid;
-}
-
-// Create local Doc instance mapped to 'examples' collection document with id 'richtext'
-var doc = connection.get('examples', 'stian5');
-
-// can only create when document doesn't yet exist
-// doc.create({ text: '', text2: '' });
-
-// Generate a random uid and display it.
-var uid = names[Math.floor(Math.random() * 10)];
-renderNameplate(uid);
-doc.requestReplyPresence = true;
-
-doc.subscribe(function(err) {
-  if (err) throw err;
-  var quill = new Quill('#editor', {
-    theme: 'snow',
-    modules: {
-      cursors: { hideDelayMs: 999999999 }
-    }
-  });
-  var quill2 = new Quill('#editor2', {
-    theme: 'snow',
-    modules: {
-      cursors: { hideDelayMs: 999999999 }
-    }
-  });
-  var cursors = quill.getModule('cursors');
-  var cursors2 = quill2.getModule('cursors');
-  doc.submitPresence(
-    {
-      u: uid,
-      userInfo: { uid }
-    },
-    err => {
-      if (err) {
-        throw err;
-      }
-      doc.requestReplyPresence = false;
-    }
-  );
-
-  quill.setContents(doc.data.text);
-  quill2.setContents(doc.data.text2);
-
-  quill.on('text-change', function(delta, oldDelta, source) {
-    if (source !== 'user') return;
-    const op = { p: ['text'], t: 'rich-text', o: delta.ops };
-    doc.submitOp(op, { source: quill });
-  });
-
-  quill2.on('text-change', function(delta, oldDelta, source) {
-    if (source !== 'user') return;
-    const op = { p: ['text2'], t: 'rich-text', o: delta.ops };
-    doc.submitOp(op, { source: quill });
-  });
-
-  bike.addEventListener('change', function() {
-    checkboxSubmit('bike', this.checked);
-  });
-  car.addEventListener('change', function() {
-    checkboxSubmit('car', this.checked);
-  });
-
-  const binding = new StringBinding(textarea, doc, ['example']);
-  binding.setup();
-
-  const textEditor = new HtmlTextCollabExt.CollaborativeTextEditor({
-    control: textarea,
-    onSelectionChanged: selection =>
-      updateCursorText([selection.anchor, selection.target], uid, 'example')
-  });
-  const binding2 = new StringBinding(textinput, doc, ['example2']);
-  binding2.setup();
-
-  const textEditor2 = new HtmlTextCollabExt.CollaborativeTextEditor({
-    control: textinput,
-    onSelectionChanged: selection =>
-      updateCursorText([selection.anchor, selection.target], uid, 'example2')
-  });
-
-  const selectionManager = textEditor.selectionManager();
-  const selectionManager2 = textEditor2.selectionManager();
-
-  doc.on('op', function(ops, source) {
-    if (source === quill) return;
-    ops.forEach(op => {
-      if (op.p[0] === 'text') {
-        quill.updateContents(op.o);
-      } else {
-        quill2.updateContents(op.o);
-      }
-    });
-  });
-
-  // When we receive information about updated presences,
-  // update the locall QuillCursor(s).
-  doc.on('presence', function(srcList, submitted) {
-    document.getElementById('presence').innerHTML = Object.values(doc.presence)
-      .map(x => `<li><b>${x.u}</b> - ${Stringify(x)}</li>`)
-      .join('');
-
-    srcList.forEach(function(src) {
-      if (doc.presence[src] && doc.presence[src].u) {
-        var userid = doc.presence[src].u;
-        if (
-          userid !== uid &&
-          doc.presence[src].cursor &&
-          doc.presence[src].cursor.s &&
-          doc.presence[src].cursor.s.length > 0
-        ) {
-          // TODO: Can QuillCursors support multiple selections?
-          var sel = doc.presence[src].cursor.s[0];
-
-          // Use Math.abs because the sharedb presence type
-          // supports reverse selections, but I don't think
-          // Quill Cursors does.
-          var len = Math.abs(sel[1] - sel[0]);
-          var min = Math.min(sel[0], sel[1]);
-
-          // Re-creating an existing cursor is a no-op
-          if (doc.presence[src].p && doc.presence[src].p[0] === 'text') {
-            cursors.createCursor(userid, userid, uidColor(userid));
-            cursors.moveCursor(userid, { index: min, length: len });
-            cursors2.removeCursor(userid);
-            if (presence1[userid]) {
-              selectionManager.removeCollaborator(userid);
-              presence1[userid] = null;
-            }
-            if (presence2[userid]) {
-              selectionManager.removeCollaborator(userid);
-              presence1[userid] = null;
-            }
-          } else if (
-            doc.presence[src].p &&
-            doc.presence[src].p[0] === 'text2'
-          ) {
-            cursors2.createCursor(userid, userid, uidColor(userid));
-            cursors2.moveCursor(userid, { index: min, length: len });
-            cursors.removeCursor(userid);
-          } else if (
-            doc.presence[src].p &&
-            doc.presence[src].p[0] === 'example'
-          ) {
-            cursors2.removeCursor(userid);
-            cursors.removeCursor(userid);
-            if (presence2[userid]) {
-              selectionManager2.removeCollaborator(userid);
-              presence2[userid] = null;
-            }
-            if (!presence1[userid]) {
-              presence1[userid] = selectionManager.addCollaborator(
-                userid,
-                userid,
-                uidColor(userid)
-              );
-            }
-
-            presence1[userid].setSelection({ anchor: sel[0], target: sel[1] });
-            presence1[userid].flashCursorToolTip(2);
-          } else if (
-            doc.presence[src].p &&
-            doc.presence[src].p[0] === 'example2'
-          ) {
-            cursors2.removeCursor(userid);
-            cursors.removeCursor(userid);
-            if (presence1[userid]) {
-              selectionManager.removeCollaborator(userid);
-              presence1[userid] = null;
-            }
-            if (!presence2[userid]) {
-              presence2[userid] = selectionManager2.addCollaborator(
-                userid,
-                userid,
-                uidColor(userid)
-              );
-            }
-
-            presence2[userid].setSelection({ anchor: sel[0], target: sel[1] });
-            presence2[userid].flashCursorToolTip(2);
-          }
-        }
-      }
-    });
-  });
-
-  doc.on('presence', function(srcList, submitted) {
-    srcList.forEach(function(src) {
-      var userid = doc.presence[src].u;
-      if (doc.presence[src].p && doc.presence[src].p[0] === 'car') {
-        carP[userid] = true;
-        bikeP[userid] = false;
-        updateCarBikeP();
-        cursors2.removeCursor(userid);
-        cursors.removeCursor(userid);
-        if (presence1[userid]) {
-          selectionManager.removeCollaborator(userid);
-          presence1[userid] = null;
-        }
-        if (presence2[userid]) {
-          selectionManager.removeCollaborator(userid);
-          presence2[userid] = null;
-        }
-      } else if (doc.presence[src].p && doc.presence[src].p[0] === 'bike') {
-        carP[userid] = false;
-        bikeP[userid] = true;
-        updateCarBikeP();
-        cursors2.removeCursor(userid);
-        cursors.removeCursor(userid);
-        if (presence1[userid]) {
-          selectionManager.removeCollaborator(userid);
-          presence1[userid] = null;
-        }
-        if (presence2[userid]) {
-          selectionManager.removeCollaborator(userid);
-          presence2[userid] = null;
-        }
-      } else {
-        carP[userid] = false;
-        bikeP[userid] = false;
-      }
-    });
-    updateCarBikeP();
-  });
-
-  // When the local Quill selection changes, publish our new
-  // local presence data.
-  quill.on('selection-change', function(range, oldRange, source) {
-    if (source === 'user') {
-      updateCursor(range, uid, 'text');
-    } else {
-      debouncedUpdate(range, uid, 'text');
-    }
-  });
-  quill2.on('selection-change', function(range, oldRange, source) {
-    if (source === 'user') {
-      updateCursor(range, uid, 'text2');
-    } else {
-      debouncedUpdate(range, uid, 'text2');
-    }
-  });
-});
-
-function updateCursorText(range, uid, text) {
-  if (range) {
-    doc.submitPresence({
-      u: uid,
-      p: [text],
-      cursor: { c: 0, s: [range] }
-    });
-  }
-}
-
-function updateCursor(range, uid, text) {
-  if (range) {
-    doc.submitPresence({
-      u: uid,
-      p: [text],
-      t: 'rich-text',
-      cursor: { c: 0, s: [[range.index, range.index + range.length]] }
-    });
-  }
-}
-
-var debouncedUpdate = debounce(updateCursor, 500);
-
-function debounce(func, wait) {
-  var timeout;
-  return function(...args) {
-    var context = this;
-    var later = function() {
-      timeout = null;
-      func.apply(context, args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
-
-const checkboxSubmit = (field, value) => {
-  doc.submitPresence({
-    u: uid,
-    p: [field],
-    cursor: { s: [[]] }
-  });
-
-  doc.submitOp({ p: [field], oi: value });
-};
-
-const updateCarBikeP = () => {
-  carPresence.innerText =
-    Object.keys(carP)
-      .filter(x => carP[x])
-      .join(' - ') || '';
-  bikePresence.innerText =
-    Object.keys(bikeP)
-      .filter(x => bikeP[x])
-      .join(' - ') || '';
-};
-
-},{"@convergence/html-text-collab-ext":8,"@houshuang/ot-json0":12,"@teamwork/sharedb/lib/client":17,"json-stable-stringify":36,"quill":45,"quill-cursors":42,"rich-text":46,"sharedb-string-binding":48}],2:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.CollaborativeSelectionManager = void 0;
-
-var _CollaboratorSelection = require("./CollaboratorSelection");
-
-var _IndexUtils = require("./IndexUtils");
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
-
-function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
-var CollaborativeSelectionManager =
-/*#__PURE__*/
-function () {
-  function CollaborativeSelectionManager(options) {
-    var _this = this;
-
-    _classCallCheck(this, CollaborativeSelectionManager);
-
-    _defineProperty(this, "_collaborators", void 0);
-
-    _defineProperty(this, "_textElement", void 0);
-
-    _defineProperty(this, "_overlayContainer", void 0);
-
-    _defineProperty(this, "_scroller", void 0);
-
-    _defineProperty(this, "_onSelection", void 0);
-
-    _defineProperty(this, "_selectionAnchor", void 0);
-
-    _defineProperty(this, "_selectionTarget", void 0);
-
-    _defineProperty(this, "_checkSelection", function () {
-      setTimeout(function () {
-        var changed = _this._textElement.selectionStart !== _this._selectionAnchor || _this._textElement.selectionEnd !== _this._selectionTarget;
-
-        if (changed) {
-          if (_this._selectionAnchor === _this._textElement.selectionStart) {
-            _this._selectionAnchor = _this._textElement.selectionStart;
-            _this._selectionTarget = _this._textElement.selectionEnd;
-          } else {
-            _this._selectionAnchor = _this._textElement.selectionEnd;
-            _this._selectionTarget = _this._textElement.selectionStart;
-          }
-
-          _this._onSelection({
-            anchor: _this._selectionAnchor,
-            target: _this._selectionTarget
-          });
-        }
-      }, 0);
-    });
-
-    _defineProperty(this, "_onMouseMove", function () {
-      _this._checkResize();
-
-      _this._checkSelection();
-    });
-
-    _defineProperty(this, "_checkResize", function () {
-      if (_this._textElement.offsetWidth !== _this._overlayContainer.offsetWidth || _this._textElement.offsetHeight !== _this._overlayContainer.offsetHeight) {
-        _this._updateOverlay();
-
-        _this._collaborators.forEach(function (renderer) {
-          return renderer.refresh();
-        });
-      }
-    });
-
-    this._collaborators = new Map();
-    this._textElement = options.control; // TODO handle the line height better. The issue here
-    // is that the textarea-caret library can't handle
-    // a non-number.
-
-    var computed = window.getComputedStyle(this._textElement);
-
-    if (computed.lineHeight === "normal") {
-      throw new Error("Text areas must have a numeric line-height.");
-    }
-
-    this._onSelection = options.onSelectionChanged;
-    this._selectionAnchor = this._textElement.selectionStart;
-    this._selectionTarget = this._textElement.selectionEnd;
-    this._overlayContainer = this._textElement.ownerDocument.createElement("div");
-    this._overlayContainer.className = "text-collab-ext";
-
-    this._textElement.parentElement.append(this._overlayContainer);
-
-    this._scroller = this._textElement.ownerDocument.createElement("div");
-    this._scroller.className = "text-collab-ext-scroller";
-
-    this._overlayContainer.append(this._scroller); // Provide resize handling. After the mose down, we register for mouse
-    // movement and check if we have resized. We then listen for a mouse up
-    // to unregister.
-
-
-    this._textElement.addEventListener("mousedown", function () {
-      window.addEventListener("mousemove", _this._onMouseMove);
-    });
-
-    window.addEventListener("mouseup", function () {
-      window.removeEventListener("mousemove", _this._onMouseMove);
-
-      _this._checkResize();
-    });
-
-    this._textElement.addEventListener("scroll", function () {
-      return _this._updateScroller();
-    });
-
-    this._textElement.addEventListener("keydown", this._checkSelection);
-
-    this._textElement.addEventListener("click", this._checkSelection);
-
-    this._textElement.addEventListener("focus", this._checkSelection);
-
-    this._textElement.addEventListener("blur", this._checkSelection);
-
-    this._updateOverlay();
-  }
-
-  _createClass(CollaborativeSelectionManager, [{
-    key: "addCollaborator",
-    value: function addCollaborator(id, label, color, selection) {
-      if (this._collaborators.has(id)) {
-        throw new Error("A collaborator with the specified id already exists: ".concat(id));
-      }
-
-      var collaborator = new _CollaboratorSelection.CollaboratorSelection(this._textElement, this._scroller, color, label, {
-        margin: 5
-      });
-
-      this._collaborators.set(id, collaborator);
-
-      if (selection !== undefined && selection !== null) {
-        collaborator.setSelection(selection);
-      }
-
-      return collaborator;
-    }
-  }, {
-    key: "getCollaborator",
-    value: function getCollaborator(id) {
-      return this._collaborators.get(id);
-    }
-  }, {
-    key: "removeCollaborator",
-    value: function removeCollaborator(id) {
-      var renderer = this._collaborators.get(id);
-
-      if (renderer !== undefined) {
-        renderer.clearSelection();
-
-        this._collaborators.delete(id);
-      } else {
-        throw new Error("Unknown collaborator: ".concat(id));
-      }
-    }
-  }, {
-    key: "getSelection",
-    value: function getSelection() {
-      return {
-        anchor: this._selectionAnchor,
-        target: this._selectionTarget
-      };
-    }
-  }, {
-    key: "show",
-    value: function show() {
-      this._overlayContainer.style.visibility = "visible";
-    }
-  }, {
-    key: "hide",
-    value: function hide() {
-      this._overlayContainer.style.visibility = "hidden";
-    }
-  }, {
-    key: "dispose",
-    value: function dispose() {
-      this._overlayContainer.parentElement.removeChild(this._overlayContainer);
-    }
-  }, {
-    key: "updateSelectionsOnInsert",
-    value: function updateSelectionsOnInsert(index, value) {
-      this._collaborators.forEach(function (collaborator) {
-        var selection = collaborator.getSelection();
-
-        var anchor = _IndexUtils.IndexUtils.transformIndexOnInsert(selection.anchor, index, value);
-
-        var target = _IndexUtils.IndexUtils.transformIndexOnInsert(selection.target, index, value);
-
-        collaborator.setSelection({
-          anchor: anchor,
-          target: target
-        });
-      });
-    }
-  }, {
-    key: "updateSelectionsOnDelete",
-    value: function updateSelectionsOnDelete(index, length) {
-      this._collaborators.forEach(function (collaborator) {
-        var selection = collaborator.getSelection();
-
-        var anchor = _IndexUtils.IndexUtils.transformIndexOnDelete(selection.anchor, index, length);
-
-        var target = _IndexUtils.IndexUtils.transformIndexOnDelete(selection.target, index, length);
-
-        collaborator.setSelection({
-          anchor: anchor,
-          target: target
-        });
-      });
-    }
-  }, {
-    key: "_updateOverlay",
-    value: function _updateOverlay() {
-      var top = this._textElement.offsetTop;
-      var left = this._textElement.offsetLeft;
-      var height = this._textElement.offsetHeight;
-      var width = this._textElement.offsetWidth;
-      this._overlayContainer.style.top = top + "px";
-      this._overlayContainer.style.left = left + "px";
-      this._overlayContainer.style.height = height + "px";
-      this._overlayContainer.style.width = width + "px";
-    }
-  }, {
-    key: "_updateScroller",
-    value: function _updateScroller() {
-      this._scroller.style.top = this._textElement.scrollTop * -1 + "px";
-      this._scroller.style.left = this._textElement.scrollLeft * -1 + "px";
-    }
-  }]);
-
-  return CollaborativeSelectionManager;
-}();
-
-exports.CollaborativeSelectionManager = CollaborativeSelectionManager;
-},{"./CollaboratorSelection":4,"./IndexUtils":5}],3:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.CollaborativeTextEditor = void 0;
-
-var _CollaborativeSelectionManager = require("./CollaborativeSelectionManager");
-
-var _TextInputManager = require("./TextInputManager");
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
-
-function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
-var CollaborativeTextEditor =
-/*#__PURE__*/
-function () {
-  function CollaborativeTextEditor(options) {
-    var _this = this;
-
-    _classCallCheck(this, CollaborativeTextEditor);
-
-    _defineProperty(this, "_selectionManager", void 0);
-
-    _defineProperty(this, "_inputManager", void 0);
-
-    _defineProperty(this, "_onInsert", void 0);
-
-    _defineProperty(this, "_onDelete", void 0);
-
-    if (!options) {
-      throw new Error("options must be defined.");
-    }
-
-    if (!options.control) {
-      throw new Error("options.control must be defined.");
-    }
-
-    var control = options.control;
-    var insertCallback = options.onInsert;
-    var deleteCallback = options.onDelete;
-
-    var onInsert = function onInsert(index, value) {
-      _this._selectionManager.updateSelectionsOnInsert(index, value);
-
-      if (insertCallback) {
-        insertCallback(index, value);
-      }
-    };
-
-    var onDelete = function onDelete(index, length) {
-      _this._selectionManager.updateSelectionsOnDelete(index, length);
-
-      if (deleteCallback) {
-        deleteCallback(index, length);
-      }
-    };
-
-    var onSelectionChanged = options.onSelectionChanged !== undefined ? options.onSelectionChanged : function (selection) {};
-    this._inputManager = new _TextInputManager.TextInputManager({
-      control: control,
-      onInsert: onInsert,
-      onDelete: onDelete
-    });
-    this._selectionManager = new _CollaborativeSelectionManager.CollaborativeSelectionManager({
-      control: control,
-      onSelectionChanged: onSelectionChanged
-    });
-  }
-
-  _createClass(CollaborativeTextEditor, [{
-    key: "insertText",
-    value: function insertText(index, value) {
-      this._inputManager.insertText(index, value);
-
-      this._selectionManager.updateSelectionsOnInsert(index, value);
-    }
-  }, {
-    key: "deleteText",
-    value: function deleteText(index, length) {
-      this._inputManager.deleteText(index, length);
-
-      this._selectionManager.updateSelectionsOnDelete(index, length);
-    }
-  }, {
-    key: "setText",
-    value: function setText(value) {
-      this._inputManager.setText(value);
-    }
-  }, {
-    key: "getText",
-    value: function getText() {
-      return this._inputManager.getText();
-    }
-  }, {
-    key: "selectionManager",
-    value: function selectionManager() {
-      return this._selectionManager;
-    }
-  }]);
-
-  return CollaborativeTextEditor;
-}();
-
-exports.CollaborativeTextEditor = CollaborativeTextEditor;
-},{"./CollaborativeSelectionManager":2,"./TextInputManager":7}],4:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.CollaboratorSelection = void 0;
-
-var _SelectionComputer = require("./SelectionComputer");
-
-var _textareaCaret = _interopRequireDefault(require("textarea-caret"));
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
-
-function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
-var CollaboratorSelection =
-/*#__PURE__*/
-function () {
-  function CollaboratorSelection(textInput, overlayContainer, color, label, options) {
-    _classCallCheck(this, CollaboratorSelection);
-
-    _defineProperty(this, "_rows", void 0);
-
-    _defineProperty(this, "_cursorElement", void 0);
-
-    _defineProperty(this, "_tooltipElement", void 0);
-
-    _defineProperty(this, "_textInput", void 0);
-
-    _defineProperty(this, "_container", void 0);
-
-    _defineProperty(this, "_color", void 0);
-
-    _defineProperty(this, "_selection", void 0);
-
-    _defineProperty(this, "_cursor", void 0);
-
-    _defineProperty(this, "_label", void 0);
-
-    _defineProperty(this, "_margin", void 0);
-
-    _defineProperty(this, "_tooltipTimeout", void 0);
-
-    this._label = label;
-    this._textInput = textInput;
-    this._color = color;
-    this._cursor = null;
-    this._selection = null;
-    this._rows = [];
-    this._container = overlayContainer;
-    options = options || {};
-    this._margin = options.margin || 5;
-    this._tooltipTimeout = null;
-    this._cursorElement = this._container.ownerDocument.createElement("div");
-    this._cursorElement.className = "collaborator-cursor";
-    this._cursorElement.style.backgroundColor = this._color;
-    this._tooltipElement = this._container.ownerDocument.createElement("div");
-    this._tooltipElement.innerHTML = label;
-    this._tooltipElement.className = "collaborator-cursor-tooltip";
-    this._tooltipElement.style.backgroundColor = this._color;
-    this.hideCursorTooltip();
-    this.refresh();
-  }
-
-  _createClass(CollaboratorSelection, [{
-    key: "showSelection",
-    value: function showSelection() {
-      console.log("show selection");
-      var cursorCoords = (0, _textareaCaret.default)(this._textInput, this._cursor);
-      console.log(cursorCoords.left, this._container.offsetWidth);
-
-      if (cursorCoords.left < this._container.offsetWidth) {
-        console.log("yes");
-
-        this._rows.forEach(function (row) {
-          row.element.style.visibility = "visible";
-        });
-      }
-    }
-  }, {
-    key: "hideSelection",
-    value: function hideSelection() {
-      this._rows.forEach(function (row) {
-        row.element.style.visibility = "hidden";
-      });
-    }
-  }, {
-    key: "showCursor",
-    value: function showCursor() {
-      console.log("show cursor");
-      var cursorCoords = (0, _textareaCaret.default)(this._textInput, this._cursor);
-      console.log(cursorCoords.left, this._container.offsetWidth);
-
-      if (cursorCoords.left < this._container.offsetWidth) {
-        console.log("yes");
-
-        this._rows.forEach(function (row) {
-          row.element.style.visibility = "visible";
-        });
-      }
-
-      this._cursorElement.style.visibility = "visible";
-    }
-  }, {
-    key: "hideCursor",
-    value: function hideCursor() {
-      this._cursorElement.style.visibility = "hidden";
-    }
-  }, {
-    key: "showCursorToolTip",
-    value: function showCursorToolTip() {
-      this._clearToolTipTimeout();
-
-      this._tooltipElement.style.opacity = "1";
-    }
-  }, {
-    key: "flashCursorToolTip",
-    value: function flashCursorToolTip(duration) {
-      var _this = this;
-
-      this.showCursorToolTip();
-
-      this._clearToolTipTimeout();
-
-      this._tooltipTimeout = setTimeout(function () {
-        return _this.hideCursorTooltip();
-      }, duration * 1000);
-    }
-  }, {
-    key: "hideCursorTooltip",
-    value: function hideCursorTooltip() {
-      this._clearToolTipTimeout();
-
-      this._tooltipElement.style.opacity = "0";
-    }
-  }, {
-    key: "_clearToolTipTimeout",
-    value: function _clearToolTipTimeout() {
-      if (this._tooltipTimeout !== null) {
-        clearTimeout(this._tooltipTimeout);
-        this._tooltipTimeout = null;
-      }
-    }
-  }, {
-    key: "setColor",
-    value: function setColor(color) {
-      var _this2 = this;
-
-      this._color = color;
-
-      this._rows.forEach(function (row) {
-        row.element.style.background = _this2._color;
-      });
-
-      this._cursorElement.style.background = this._color;
-      this._tooltipElement.style.background = this._color;
-    }
-  }, {
-    key: "setSelection",
-    value: function setSelection(selection) {
-      if (selection === null) {
-        this._cursor = null;
-        this._selection = null;
-      } else {
-        this._cursor = selection.target;
-        this._selection = _objectSpread({}, selection);
-      }
-
-      this.refresh();
-    }
-  }, {
-    key: "getSelection",
-    value: function getSelection() {
-      return _objectSpread({}, this._selection);
-    }
-  }, {
-    key: "clearSelection",
-    value: function clearSelection() {
-      this.setSelection(null);
-    }
-  }, {
-    key: "refresh",
-    value: function refresh() {
-      this._updateCursor();
-
-      this._updateSelection();
-    }
-  }, {
-    key: "_updateCursor",
-    value: function _updateCursor() {
-      var cursorCoords = (0, _textareaCaret.default)(this._textInput, this._cursor);
-      console.log(cursorCoords.left, this._container.offsetWidth);
-
-      if (cursorCoords.left > this._container.offsetWidth) {
-        console.log("hide");
-        this.hideCursorTooltip();
-        this.hideSelection();
-        return;
-      }
-
-      if (this._cursor === null && this._container.contains(this._cursorElement)) {
-        console.log("remove");
-
-        this._container.removeChild(this._cursorElement);
-
-        this._container.removeChild(this._tooltipElement);
-      } else {
-        if (!this._cursorElement.parentElement) {
-          console.log("add");
-
-          this._container.append(this._cursorElement);
-
-          this._container.append(this._tooltipElement);
-        }
-
-        this._cursorElement.style.height = cursorCoords.height + "px";
-        this._cursorElement.style.top = cursorCoords.top + "px";
-        var cursorLeft = cursorCoords.left - this._cursorElement.offsetWidth / 2;
-        this._cursorElement.style.left = cursorLeft + "px";
-        var toolTipTop = cursorCoords.top - this._tooltipElement.offsetHeight;
-
-        if (toolTipTop + this._container.offsetTop < this._margin) {
-          toolTipTop = cursorCoords.top + cursorCoords.height;
-        }
-
-        var toolTipLeft = cursorLeft;
-
-        if (toolTipLeft + this._tooltipElement.offsetWidth > this._container.offsetWidth - this._margin) {
-          toolTipLeft = cursorLeft + this._cursorElement.offsetWidth - this._tooltipElement.offsetWidth;
-        }
-
-        this._tooltipElement.style.top = toolTipTop + "px";
-        this._tooltipElement.style.left = toolTipLeft + "px";
-      }
-    }
-  }, {
-    key: "_updateSelection",
-    value: function _updateSelection() {
-      var _this3 = this;
-
-      if (this._selection === null) {
-        this._rows.forEach(function (row) {
-          return row.element.parentElement.removeChild(row.element);
-        });
-
-        this._rows.splice(0, this._rows.length);
-      } else {
-        var start;
-        var end;
-
-        if (this._selection.anchor > this._selection.target) {
-          start = Number(this._selection.target);
-          end = Number(this._selection.anchor);
-        } else {
-          start = Number(this._selection.anchor);
-          end = Number(this._selection.target);
-        }
-
-        var newRows = _SelectionComputer.SelectionComputer.calculateSelection(this._textInput, start, end); // Adjust size of rows as needed
-
-
-        var delta = newRows.length - this._rows.length;
-
-        if (delta > 0) {
-          if (this._rows.length === 0 || this._rowsEqual(newRows[0], this._rows[0].rowData)) {
-            this._addNewRows(delta, true);
-          } else {
-            this._addNewRows(delta, false);
-          }
-        } else if (delta < 0) {
-          var removed = null;
-
-          if (this._rowsEqual(newRows[0], this._rows[0].rowData)) {
-            // Take from the target.
-            removed = this._rows.splice(this._rows.length - 1 + delta, delta * -1);
-          } else {
-            removed = this._rows.splice(0, delta * -1);
-          }
-
-          removed.forEach(function (row) {
-            return row.element.parentElement.removeChild(row.element);
-          });
-        } // Now compare each row and see if we need an update.
-
-
-        newRows.forEach(function (newRowData, index) {
-          var row = _this3._rows[index];
-
-          _this3._updateRow(newRowData, row);
-        });
-      }
-    }
-  }, {
-    key: "_addNewRows",
-    value: function _addNewRows(count, append) {
-      for (var i = 0; i < count; i++) {
-        var element = this._container.ownerDocument.createElement("div");
-
-        element.style.position = "absolute";
-        element.style.backgroundColor = this._color;
-        element.style.opacity = "0.25";
-
-        this._container.append(element);
-
-        var rowData = {
-          height: 0,
-          width: 0,
-          top: 0,
-          left: 0
-        };
-        var newRow = {
-          element: element,
-          rowData: rowData
-        };
-
-        if (append) {
-          this._rows.push(newRow);
-        } else {
-          this._rows.unshift(newRow);
-        }
-      }
-    }
-  }, {
-    key: "_rowsEqual",
-    value: function _rowsEqual(a, b) {
-      return a.height === b.height && a.width === b.width && a.top === b.top && a.left === b.left;
-    }
-  }, {
-    key: "_updateRow",
-    value: function _updateRow(newRowData, row) {
-      if (newRowData.height !== row.rowData.height) {
-        row.rowData.height = newRowData.height;
-        row.element.style.height = "".concat(newRowData.height, "px");
-      }
-
-      if (newRowData.width !== row.rowData.width) {
-        row.rowData.width = newRowData.width;
-        row.element.style.width = "".concat(newRowData.width, "px");
-      }
-
-      if (newRowData.top !== row.rowData.top) {
-        row.rowData.top = newRowData.top;
-        row.element.style.top = "".concat(newRowData.top, "px");
-      }
-
-      if (newRowData.left !== row.rowData.left) {
-        row.rowData.left = newRowData.left;
-        row.element.style.left = "".concat(newRowData.left, "px");
-      }
-    }
-  }]);
-
-  return CollaboratorSelection;
-}();
-
-exports.CollaboratorSelection = CollaboratorSelection;
-},{"./SelectionComputer":6,"textarea-caret":50}],5:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.IndexUtils = void 0;
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
-
-function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
-
-var IndexUtils =
-/*#__PURE__*/
-function () {
-  function IndexUtils() {
-    _classCallCheck(this, IndexUtils);
-  }
-
-  _createClass(IndexUtils, null, [{
-    key: "transformIndexOnInsert",
-    value: function transformIndexOnInsert(index, insertIndex, value) {
-      if (insertIndex <= index) {
-        return index + value.length;
-      }
-
-      return index;
-    }
-  }, {
-    key: "transformIndexOnDelete",
-    value: function transformIndexOnDelete(index, deleteIndex, length) {
-      if (index > deleteIndex) {
-        return index - Math.min(index - deleteIndex, length);
-      }
-
-      return index;
-    }
-  }]);
-
-  return IndexUtils;
-}();
-
-exports.IndexUtils = IndexUtils;
-},{}],6:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.SelectionComputer = void 0;
-
-var _textareaCaret = _interopRequireDefault(require("textarea-caret"));
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function _toConsumableArray(arr) { return _arrayWithoutHoles(arr) || _iterableToArray(arr) || _nonIterableSpread(); }
-
-function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance"); }
-
-function _iterableToArray(iter) { if (Symbol.iterator in Object(iter) || Object.prototype.toString.call(iter) === "[object Arguments]") return Array.from(iter); }
-
-function _arrayWithoutHoles(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = new Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } }
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
-
-function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
-/*
- * Computes the dimensions of the text selection.  Each line in the textarea has its own
- * selection dimensions, which are intended to be used to render a div with the specified
- * position, dimensions and background color.
- *
- * This has only been tested on a textarea, but should be able to be adapted to be used
- * in other HTML form elements.
- *
- * TODO unit test, this is pretty brittle
- */
-var SelectionComputer =
-/*#__PURE__*/
-function () {
-  _createClass(SelectionComputer, null, [{
-    key: "calculateSelection",
-    value: function calculateSelection(element, start, end) {
-      var computer = new SelectionComputer(element, start, end);
-      return computer.selectionRows;
-    } // The calculated styles for each row.
-
-  }]);
-
-  function SelectionComputer(element, start, end) {
-    _classCallCheck(this, SelectionComputer);
-
-    this.element = element;
-    this.start = start;
-    this.end = end;
-
-    _defineProperty(this, "selectionRows", void 0);
-
-    _defineProperty(this, "startCoordinates", void 0);
-
-    _defineProperty(this, "endCoordinates", void 0);
-
-    _defineProperty(this, "lineHeight", void 0);
-
-    _defineProperty(this, "elementPaddingLeft", void 0);
-
-    _defineProperty(this, "elementPaddingRight", void 0);
-
-    _defineProperty(this, "elementPaddingX", void 0);
-
-    this.startCoordinates = (0, _textareaCaret.default)(element, start);
-    this.endCoordinates = (0, _textareaCaret.default)(element, end);
-    this.lineHeight = this.startCoordinates.height;
-    this.elementPaddingLeft = parseFloat(element.style.paddingLeft) || 0;
-    this.elementPaddingRight = parseFloat(element.style.paddingRight) || 0;
-    this.elementPaddingX = this.elementPaddingLeft + this.elementPaddingRight;
-    this.selectionRows = []; // Figure out whether this selection spans more than one "row", as determined by
-    // the presence of a newline character. The computation of single line selections
-    // is slightly different than for multiple line selections.
-
-    var selectedText = element.value.substr(start, end - start);
-
-    if (selectedText.indexOf('\n') < 0) {
-      this.appendSingleLineSelection(this.startCoordinates, this.endCoordinates);
-    } else {
-      this.buildMultiRowSelection();
-    }
-  }
-
-  _createClass(SelectionComputer, [{
-    key: "appendSingleLineSelection",
-    value: function appendSingleLineSelection(startCoordinates, endCoordinates) {
-      var _this$selectionRows;
-
-      (_this$selectionRows = this.selectionRows).push.apply(_this$selectionRows, _toConsumableArray(this.buildSingleLineSelection(startCoordinates, endCoordinates)));
-    }
-  }, {
-    key: "buildSingleLineSelection",
-    value: function buildSingleLineSelection(startCoordinates, endCoordinates) {
-      // does this line wrap? If not, we can just calculate the row selection based on
-      // the provided coordinates.
-      if (startCoordinates.top === endCoordinates.top) {
-        return [{
-          width: endCoordinates.left - startCoordinates.left,
-          top: startCoordinates.top,
-          left: startCoordinates.left,
-          height: this.lineHeight
-        }];
-      } else {
-        return this.buildWrappedLineSelections(startCoordinates, endCoordinates);
-      }
-    }
-    /**
-     * Wrapped lines have a more complex computation since we have to create multiple
-     * rows.
-     *
-     * @param startCoordinates
-     * @param endCoordinates
-     */
-
-  }, {
-    key: "buildWrappedLineSelections",
-    value: function buildWrappedLineSelections(startCoordinates, endCoordinates) {
-      var rows = []; // the first line just goes the full width of the textarea
-
-      rows.push({
-        width: this.element.scrollWidth - this.elementPaddingRight - startCoordinates.left,
-        top: startCoordinates.top,
-        left: startCoordinates.left,
-        height: this.lineHeight
-      }); // If the selection contains one or more rows that span the entire textarea,
-      // calculate a single selection element, which may actually span multiple rows,
-      // but fills the width of the textarea.
-
-      if (endCoordinates.top > startCoordinates.top + this.lineHeight) {
-        rows.push({
-          width: this.element.scrollWidth - this.elementPaddingX,
-          left: this.elementPaddingLeft,
-          top: startCoordinates.top + this.lineHeight,
-          height: endCoordinates.top - startCoordinates.top - this.lineHeight
-        });
-      } // The last line starts at the left edge of the textarea and doesn't span the
-      // entire width of the textarea
-
-
-      rows.push({
-        width: endCoordinates.left - this.elementPaddingLeft,
-        top: endCoordinates.top,
-        left: this.elementPaddingLeft,
-        height: this.lineHeight
-      });
-      return rows;
-    }
-  }, {
-    key: "buildMultiRowSelection",
-    value: function buildMultiRowSelection() {
-      var currentCoordinates = this.startCoordinates;
-      var currentIndex = +this.start; // build one or more selection elements for each row (as determined by newline
-      // characters)
-
-      while (currentCoordinates.top < this.endCoordinates.top) {
-        var nextLineBreakPosition = this.element.value.indexOf('\n', currentIndex);
-        var endOfLinePosition = this.element.value.length;
-
-        if (nextLineBreakPosition >= 0) {
-          endOfLinePosition = nextLineBreakPosition;
-        }
-
-        if (endOfLinePosition > this.end) {
-          endOfLinePosition = this.end;
-        }
-
-        var endOfLineCoordinates = (0, _textareaCaret.default)(this.element, endOfLinePosition); // console.log('target of line position', endOfLinePosition, 'coords', endOfLineCoordinates);
-        // This "single line" may actually wrap multiple lines of the textarea
-
-        this.appendSingleLineSelection(currentCoordinates, endOfLineCoordinates);
-        currentIndex = endOfLinePosition + 1;
-        currentCoordinates = (0, _textareaCaret.default)(this.element, currentIndex);
-      }
-
-      if (currentIndex < this.end) {
-        var lastLine = {
-          width: this.endCoordinates.left - currentCoordinates.left,
-          top: currentCoordinates.top,
-          left: currentCoordinates.left,
-          height: this.lineHeight
-        };
-        this.selectionRows.push(lastLine);
-      }
-    }
-  }]);
-
-  return SelectionComputer;
-}();
-
-exports.SelectionComputer = SelectionComputer;
-},{"textarea-caret":50}],7:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.TextInputManager = void 0;
-
-var _stringChangeDetector = _interopRequireDefault(require("@convergence/string-change-detector"));
-
-var _IndexUtils = require("./IndexUtils");
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
-
-function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
-var TextInputManager =
-/*#__PURE__*/
-function () {
-  /**
-   *
-   * @param options
-   */
-  function TextInputManager(options) {
-    var _this = this;
-
-    _classCallCheck(this, TextInputManager);
-
-    _defineProperty(this, "_control", void 0);
-
-    _defineProperty(this, "_onLocalInsert", void 0);
-
-    _defineProperty(this, "_onLocalDelete", void 0);
-
-    _defineProperty(this, "_changeDetector", void 0);
-
-    _defineProperty(this, "_onLocalInput", function () {
-      _this._changeDetector.processNewValue(_this._control.value);
-    });
-
-    this._control = options.control;
-    this._onLocalInsert = options.onInsert;
-    this._onLocalDelete = options.onDelete;
-    this._changeDetector = null;
-    this.bind();
-  }
-
-  _createClass(TextInputManager, [{
-    key: "bind",
-    value: function bind() {
-      this._changeDetector = new _stringChangeDetector.default({
-        value: this._control.value,
-        onInsert: this._onLocalInsert,
-        onRemove: this._onLocalDelete
-      });
-
-      this._control.addEventListener("input", this._onLocalInput);
-    }
-  }, {
-    key: "unbind",
-    value: function unbind() {
-      this._control.removeEventListener("input", this._onLocalInput);
-
-      this._changeDetector = null;
-    }
-  }, {
-    key: "insertText",
-    value: function insertText(index, value) {
-      this._assertBound();
-
-      var _this$_getSelection = this._getSelection(),
-          start = _this$_getSelection.start,
-          end = _this$_getSelection.end;
-
-      var xStart = _IndexUtils.IndexUtils.transformIndexOnInsert(start, index, value);
-
-      var xEnd = _IndexUtils.IndexUtils.transformIndexOnInsert(end, index, value);
-
-      this._changeDetector.insertText(index, value);
-
-      this._updateControl();
-
-      this._setTextSelection(xStart, xEnd);
-    }
-  }, {
-    key: "deleteText",
-    value: function deleteText(index, length) {
-      this._assertBound();
-
-      var _this$_getSelection2 = this._getSelection(),
-          start = _this$_getSelection2.start,
-          end = _this$_getSelection2.end;
-
-      var xStart = _IndexUtils.IndexUtils.transformIndexOnDelete(start, index, length);
-
-      var xEnd = _IndexUtils.IndexUtils.transformIndexOnDelete(end, index, length);
-
-      this._changeDetector.removeText(index, length);
-
-      this._updateControl();
-
-      this._setTextSelection(xStart, xEnd);
-    }
-  }, {
-    key: "setText",
-    value: function setText(value) {
-      this._assertBound();
-
-      this._changeDetector.setValue(value);
-
-      this._updateControl();
-
-      this._setTextSelection(0, 0);
-    }
-  }, {
-    key: "getText",
-    value: function getText() {
-      return this._control.value;
-    }
-  }, {
-    key: "_updateControl",
-    value: function _updateControl() {
-      this._control.value = this._changeDetector.getValue();
-    }
-  }, {
-    key: "_assertBound",
-    value: function _assertBound() {
-      if (this._changeDetector === null) {
-        throw new Error("The TextInputManager is not bound.");
-      }
-    }
-  }, {
-    key: "_getSelection",
-    value: function _getSelection() {
-      return {
-        'start': this._control.selectionStart,
-        'end': this._control.selectionEnd
-      };
-    }
-  }, {
-    key: "_setTextSelection",
-    value: function _setTextSelection(start, end) {
-      // this._control.focus();
-      this._control.setSelectionRange(start, end);
-    }
-  }]);
-
-  return TextInputManager;
-}();
-
-exports.TextInputManager = TextInputManager;
-},{"./IndexUtils":5,"@convergence/string-change-detector":10}],8:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _CollaborativeSelectionManager = require("./CollaborativeSelectionManager");
-
-Object.keys(_CollaborativeSelectionManager).forEach(function (key) {
-  if (key === "default" || key === "__esModule") return;
-  Object.defineProperty(exports, key, {
-    enumerable: true,
-    get: function get() {
-      return _CollaborativeSelectionManager[key];
-    }
-  });
-});
-
-var _CollaboratorSelection = require("./CollaboratorSelection");
-
-Object.keys(_CollaboratorSelection).forEach(function (key) {
-  if (key === "default" || key === "__esModule") return;
-  Object.defineProperty(exports, key, {
-    enumerable: true,
-    get: function get() {
-      return _CollaboratorSelection[key];
-    }
-  });
-});
-
-var _TextInputManager = require("./TextInputManager");
-
-Object.keys(_TextInputManager).forEach(function (key) {
-  if (key === "default" || key === "__esModule") return;
-  Object.defineProperty(exports, key, {
-    enumerable: true,
-    get: function get() {
-      return _TextInputManager[key];
-    }
-  });
-});
-
-var _CollaborativeTextEditor = require("./CollaborativeTextEditor");
-
-Object.keys(_CollaborativeTextEditor).forEach(function (key) {
-  if (key === "default" || key === "__esModule") return;
-  Object.defineProperty(exports, key, {
-    enumerable: true,
-    get: function get() {
-      return _CollaborativeTextEditor[key];
-    }
-  });
-});
-},{"./CollaborativeSelectionManager":2,"./CollaborativeTextEditor":3,"./CollaboratorSelection":4,"./TextInputManager":7}],9:[function(require,module,exports){
-/**!
-© 2017 Convergence Labs, Inc.
-@version 0.1.8
-@license MIT
-*/
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-var StringChangeDetector = exports.StringChangeDetector = function () {
-  function StringChangeDetector(options) {
-    _classCallCheck(this, StringChangeDetector);
-
-    if (!options) {
-      throw new Error("options must be defined");
-    }
-
-    if (typeof options.onInsert !== "function") {
-      throw new Error("options.onInsert must be a function");
-    }
-
-    if (typeof options.onRemove !== "function") {
-      throw new Error("options.onRemove must be a function");
-    }
-
-    if (typeof options.value !== "string") {
-      throw new Error("options.value must be a string");
-    }
-
-    this._onInsert = options.onInsert;
-    this._onRemove = options.onRemove;
-    this._value = options.value;
-  }
-
-  /**
-   * Inserts a string into the current value at the specified index.
-   *
-   * @param index {number}
-   *    The index in the string to insert into.
-   * @param value {string}
-   *   The value to insert into the string.
-   */
-
-
-  _createClass(StringChangeDetector, [{
-    key: "insertText",
-    value: function insertText(index, value) {
-      var oldVal = this._value;
-      var newVal = oldVal.substring(0, index) + value + oldVal.substring(index, oldVal.length);
-      this.setValue(newVal);
-    }
-
-    /**
-     * Removes a specified number of characters from the current string at
-     * a specific location.
-     *
-     * @param index {number}
-     *    The index in the string to remove characters.
-     * @param length {number}
-     *   The number of characters to remove.
-     */
-
-  }, {
-    key: "removeText",
-    value: function removeText(index, length) {
-      var oldVal = this._value;
-      var newVal = oldVal.substring(0, index) + oldVal.substring(index + length, oldVal.length);
-      this.setValue(newVal);
-    }
-
-    /**
-     * Sets the current value of the string.
-     *
-     * @param value {string}
-     *   The new value of the string.
-     */
-
-  }, {
-    key: "setValue",
-    value: function setValue(value) {
-      this._value = value;
-    }
-
-    /**
-     * Gets the current value of the string.
-     *
-     * @returns {string}
-     */
-
-  }, {
-    key: "getValue",
-    value: function getValue() {
-      return this._value;
-    }
-
-    /**
-     * Process the new value of the string after a single edit.
-     *
-     * @param newValue {string}
-     *   The new value to process.
-     */
-
-  }, {
-    key: "processNewValue",
-    value: function processNewValue(newValue) {
-      var commonEnd = 0;
-      var commonStart = 0;
-
-      if (this._value === newValue) {
-        return;
-      }
-
-      while (this._value.charAt(commonStart) === newValue.charAt(commonStart)) {
-        commonStart++;
-      }
-
-      while (this._value.charAt(this._value.length - 1 - commonEnd) === newValue.charAt(newValue.length - 1 - commonEnd) && commonEnd + commonStart < this._value.length && commonEnd + commonStart < newValue.length) {
-        commonEnd++;
-      }
-
-      // Characters were removed.
-      if (this._value.length !== commonStart + commonEnd) {
-        if (this._onRemove) {
-          this._onRemove(commonStart, this._value.length - commonStart - commonEnd);
-        }
-      }
-
-      // Characters were added
-      if (newValue.length !== commonStart + commonEnd) {
-        if (this._onInsert) {
-          this._onInsert(commonStart, newValue.slice(commonStart, newValue.length - commonEnd));
-        }
-      }
-
-      this._value = newValue;
-    }
-  }]);
-
-  return StringChangeDetector;
-}();
-
-
-},{}],10:[function(require,module,exports){
-/**!
-© 2017 Convergence Labs, Inc.
-@version 0.1.8
-@license MIT
-*/
-'use strict';
-
-module.exports = require('./StringChangeDetector').StringChangeDetector;
-
-
-},{"./StringChangeDetector":9}],11:[function(require,module,exports){
 // These methods let you build a transform function from a transformComponent
 // function for OT types like JSON0 in which operations are lists of components
 // and transforming them requires N^2 work. I find it kind of nasty that I need
@@ -1811,7 +78,7 @@ function bootstrapTransform(type, transformComponent, checkValidOp, append) {
   };
 };
 
-},{}],12:[function(require,module,exports){
+},{}],2:[function(require,module,exports){
 // Only the JSON type is exported, because the text type is deprecated
 // otherwise. (If you want to use it somewhere, you're welcome to pull it out
 // into a separate module that json0 can depend on).
@@ -1820,7 +87,7 @@ module.exports = {
   type: require('./json0')
 };
 
-},{"./json0":13}],13:[function(require,module,exports){
+},{"./json0":3}],3:[function(require,module,exports){
 /*
  This is the implementation of the JSON OT type.
 
@@ -1955,63 +222,6 @@ function convertToText(c) {
   delete c.t;
   delete c.o;
 }
-
-// not checking anything here, we should probably check that u: exists
-// (only thing we care about at json0 top level), and then delegate
-// to any subtypes if there is already subtype presence data
-json.createPresence = function(presence) {
-  return presence;
-};
-
-// this needs more thinking/testing, looking a bit more carefully at
-// how this is implemented in ot-rich-text, etc.
-json.comparePresence = function(pres1, pres2) {
-  if (!pres1 || !pres2) {
-    return false;
-  }
-  if (!pres1.p || !pres2.p) {
-    return false;
-  }
-  if (pres1.t !== pres2.t) {
-    return false;
-  }
-  if (pres1.t && subtypes[pres1.t]) {
-    if (pres1.p[0] === pres2.p[0]) {
-      return subtypes[pres1.t].comparePresence(pres1, pres2);
-    }
-  } else return pres1 === pres2;
-};
-
-// this is the key function, always run client-side, both on
-// the client that creates a text-change, and on the clients
-// that receive text-changes (ops). if there are no ops, just
-// return presence, if there are ops, delegate to the subtype
-// responsible for those ops (currently only ot-rich-text).
-// I am making assumptions many places that all ops will be
-// of the same subtype, not sure if this is a given.
-// We're only concerned about the first level of object/array,
-// not sure if the spec allows nesting of subtypes.
-json.transformPresence = function(presence, op, isOwn) {
-  if (op.length < 1) {
-    return presence;
-  }
-  const representativeOp = op[0];
-  const opType = op[0].t;
-  const path = representativeOp.p && representativeOp.p[0]
-  if (opType && subtypes[opType] && path) {
-    if (!presence.p || !presence.p[0] || presence.p[0] !== path) {
-      return presence
-    }
-    // return result of running the subtype's transformPresence,
-    // but add path and type, which the subtype will not include
-    presence = {
-      ...subtypes[opType].transformPresence(presence, op, isOwn),
-      p: op[0].p,
-      t: op[0].t
-    };
-  }
-  return presence;
-};
 
 json.apply = function(snapshot, op) {
   json.checkValidOp(op);
@@ -2531,6 +741,174 @@ json.transformComponent = function(dest, c, otherC, type) {
   return dest;
 };
 
+// TODO validate this.
+// Note that this is the same data passed into doc.submitPresence,
+// and we rely on developers passing in the correct structure here.
+json.createPresence = function(presenceData) {
+  return presenceData;
+};
+
+json.comparePresence = function(pres1, pres2) {
+  return JSON.stringify(pres1) === JSON.stringify(pres2);
+};
+
+// var transformPosition = function(cursor, op, isOwnOp) {
+//   var cursor = clone(cursor);
+// 
+//   var opIsAncestor = cursor.length >= op.p.length; // true also if op is self
+//   var opIsSibling = cursor.length === op.p.length; // true also if op is self
+//   var opIsAncestorSibling = cursor.length >= op.p.length; // true also if op is self or sibling of self
+//   var equalUpTo = -1;
+//   for (var i = 0; i < op.p.length; i++) {
+//     if (op.p[i] !== cursor[i]) {
+//       opIsAncestor = false;
+//       if (i < op.p.length - 1) {
+//         opIsSibling = false;
+//         opIsAncestorSibling = false;
+//       }
+//     }
+//     if (equalUpTo === i - 1 && op.p[i] === cursor[i]) {
+//       equalUpTo += 1;
+//     }
+//   }
+// 
+//   if (opIsSibling) {
+//     if (op.sd) {
+//       cursor[cursor.length - 1] = text.transformCursor(
+//         cursor[cursor.length - 1],
+//         [{ p: op.p[op.p.length - 1], d: op.sd }],
+//         isOwnOp ? 'right' : 'left'
+//       );
+//     }
+//     if (op.si) {
+//       cursor[cursor.length - 1] = text.transformCursor(
+//         cursor[cursor.length - 1],
+//         [{ p: op.p[op.p.length - 1], i: op.si }],
+//         isOwnOp ? 'right' : 'left'
+//       );
+//     }
+//   }
+// 
+//   if (opIsAncestor) {
+//     if (op.lm !== undefined) {
+//       cursor[equalUpTo] = op.lm;
+//     }
+//     if (op.od && op.oi) {
+//       cursor = op.p.slice(0, op.p.length);
+//     } else if (op.od) {
+//       cursor = op.p.slice(0, op.p.length - 1);
+//     } else if (op.ld && op.li) {
+//       cursor = op.p.slice(0, op.p.length);
+//     } else if (op.ld) {
+//       cursor = op.p.slice(0, op.p.length - 1);
+//     }
+//   }
+// 
+//   if (opIsAncestorSibling) {
+//     var lastPathIdx = op.p.length - 1;
+//     if (
+//       !opIsAncestor &&
+//       op.ld &&
+//       !op.li &&
+//       op.p[lastPathIdx] < cursor[lastPathIdx]
+//     ) {
+//       cursor[lastPathIdx] -= 1;
+//     } else if (!op.ld && op.li && op.p[lastPathIdx] <= cursor[lastPathIdx]) {
+//       cursor[lastPathIdx] += 1;
+//     }
+// 
+//     // if move item in list from after to before
+//     if (
+//       !opIsAncestor &&
+//       op.lm !== undefined &&
+//       op.p[lastPathIdx] > cursor[lastPathIdx] &&
+//       op.lm <= cursor[lastPathIdx]
+//     ) {
+//       cursor[lastPathIdx] += 1;
+//       // if move item in list from before to after
+//     } else if (
+//       !opIsAncestor &&
+//       op.lm !== undefined &&
+//       op.p[lastPathIdx] < cursor[lastPathIdx] &&
+//       op.lm >= cursor[lastPathIdx]
+//     ) {
+//       cursor[lastPathIdx] -= 1;
+//     }
+//   }
+// 
+//   return cursor;
+// };
+// 
+// json.transformCursor = function(cursor, op, isOwnOp) {
+//   for (var i = 0; i < op.length; i++) {
+//     cursor = transformPosition(cursor, op[i], isOwnOp);
+//   }
+//   return cursor;
+// };
+//
+
+const unpackPresence = presence => {
+  if(!presence.slice) {
+    console.log('Expected presence to be an array. Received:');
+    console.log(presence);
+  }
+  return {
+    presencePath: presence.slice(0, presence.length - 2),
+    presenceType: presence[presence.length - 2],
+    subPresence: presence[presence.length - 1]
+  };
+};
+
+json.unpackPresence = unpackPresence;
+
+json.transformPresence = function(presence, op, isOwnOp) {
+  if (op.length === 0) return presence;
+
+  const { presencePath, presenceType, subPresence } = unpackPresence(presence);
+
+  // TODO integrate any valid ideas from here.
+  //for (let c of op){
+  //  if(c.si || c.sd){
+  //    convertFromText(c)
+  //  }
+  //  if(c.t === 'text0') {
+  //    //json.canOpAffectPath = function(op, path) {
+  //    presence = Object.assign({}, presence, {
+  //      s: presence.s.map(selection => {
+  //        const path = selection.slice(0, selection.length - 2);
+  //        if(canOpAffectPath(c, path)) {
+  //          const [start, end] = selection.slice(selection.length - 2);
+  //          return path.concat([
+  //            transformCursor(start, c.o),
+  //            transformCursor(end, c.o),
+  //          ]);
+  //        }
+  //        return selection;
+  //      })
+  //    });
+  //  }
+  //}
+  // "c" stands for op "component".
+  for(let c of op) {
+
+    // Transform against subtype ops.
+    if (c.t) {
+      if(json.canOpAffectPath(c, presencePath)) {
+        // TODO test this check
+        //if(subPresenceType === c.t) {
+        return presencePath.concat(
+          presenceType,
+          subtypes[presenceType].transformPresence(subPresence, c.o, isOwnOp)
+        );
+        //}
+      }
+    }
+
+    // TODO transform against non-subtype ops.
+  };
+  return presence;
+};
+
 require('./bootstrapTransform')(json, json.transformComponent, json.checkValidOp, json.append);
 
 /**
@@ -2541,8 +919,7 @@ var text = require('./text0');
 json.registerSubtype(text);
 module.exports = json;
 
-
-},{"./bootstrapTransform":11,"./text0":14}],14:[function(require,module,exports){
+},{"./bootstrapTransform":1,"./text0":4}],4:[function(require,module,exports){
 // DEPRECATED!
 //
 // This type works, but is not exported. Its included here because the JSON0
@@ -2800,7 +1177,1765 @@ text.invert = function(op) {
 
 require('./bootstrapTransform')(text, transformComponent, checkValidOp, append);
 
-},{"./bootstrapTransform":11}],15:[function(require,module,exports){
+},{"./bootstrapTransform":1}],5:[function(require,module,exports){
+var sharedb = require('@teamwork/sharedb/lib/client');
+var richText = require('rich-text');
+var json0 = require('@houshuang/ot-json0');
+var Quill = require('quill');
+var QuillCursors = require('quill-cursors');
+var Stringify = require('json-stable-stringify');
+var HtmlTextCollabExt = require('@convergence/html-text-collab-ext');
+var StringBinding = require('sharedb-string-binding');
+
+const { unpackPresence } = json0.type;
+
+Quill.register('modules/cursors', QuillCursors);
+
+presence1 = {};
+presence2 = {};
+
+json0.type.registerSubtype(richText.type);
+sharedb.types.register(json0.type);
+
+const textarea = document.getElementById('example');
+const textinput = document.getElementById('example2');
+const car = document.getElementById('car');
+const bike = document.getElementById('bike');
+const carP = {};
+const bikeP = {};
+
+textarea.addEventListener('focus', function() {
+  window.setTimeout(
+    () =>
+      updateCursorText(
+        [textarea.selectionStart, textarea.selectionStart],
+        uid,
+        'example'
+      ),
+    100
+  );
+});
+textinput.addEventListener('focus', function() {
+  window.setTimeout(
+    () =>
+      updateCursorText(
+        [textarea.selectionStart, textarea.selectionStart],
+        uid,
+        'example2'
+      ),
+    100
+  );
+});
+const carPresence = document.getElementById('presenceCar');
+const bikePresence = document.getElementById('presenceBike');
+
+// Open WebSocket connection to ShareDB server
+var socket = new WebSocket('ws://' + window.location.host);
+var connection = new sharedb.Connection(socket);
+
+// For testing reconnection
+window.disconnect = function() {
+  connection.close();
+};
+window.connect = function() {
+  var socket = new WebSocket('ws://' + window.location.host);
+  connection.bindToSocket(socket);
+};
+
+var names = [
+  'Peter',
+  'Anna',
+  'John',
+  'Ole',
+  'Niels',
+  'Gregor',
+  'Chen Li',
+  'Ananda',
+  'Rupert',
+  'Ben'
+];
+
+// Helper functions for nicely displaying uid
+function uidColor(uid) {
+  var colors = [
+    'red',
+    'blue',
+    'green',
+    'purple',
+    'orange',
+    'olive',
+    'maroon',
+    'yellow',
+    'lime',
+    'teal'
+  ];
+  return colors[names.findIndex(x => x === uid)];
+}
+
+function renderNameplate(uid) {
+  var css = 'background-color: ' + uidColor(uid) + ';';
+  document.getElementById('nameplate').style = css;
+  document.getElementById('nameplate').innerText = uid;
+}
+
+// Create local Doc instance mapped to 'examples' collection document with id 'richtext'
+var doc = connection.get('examples', 'stian5');
+
+// can only create when document doesn't yet exist
+// doc.create({ text: '', text2: '' });
+
+// Generate a random uid and display it.
+var uid = names[Math.floor(Math.random() * 10)];
+renderNameplate(uid);
+doc.requestReplyPresence = true;
+
+doc.subscribe(function(err) {
+  if (err) throw err;
+  var quill = new Quill('#editor', {
+    theme: 'snow',
+    modules: {
+      cursors: { hideDelayMs: 999999999 }
+    }
+  });
+  var quill2 = new Quill('#editor2', {
+    theme: 'snow',
+    modules: {
+      cursors: { hideDelayMs: 999999999 }
+    }
+  });
+  var cursors = quill.getModule('cursors');
+  var cursors2 = quill2.getModule('cursors');
+  //doc.submitPresence(
+  //  {
+  //    u: uid,
+  //    userInfo: { uid }
+  //  },
+  //  err => {
+  //    if (err) {
+  //      throw err;
+  //    }
+  //    doc.requestReplyPresence = false;
+  //  }
+  //);
+
+  quill.setContents(doc.data.text);
+  quill2.setContents(doc.data.text2);
+
+  quill.on('text-change', function(delta, oldDelta, source) {
+    if (source !== 'user') return;
+    const op = { p: ['text'], t: 'rich-text', o: delta.ops };
+    doc.submitOp(op, { source: quill });
+  });
+
+  quill2.on('text-change', function(delta, oldDelta, source) {
+    if (source !== 'user') return;
+    const op = { p: ['text2'], t: 'rich-text', o: delta.ops };
+    doc.submitOp(op, { source: quill });
+  });
+
+  bike.addEventListener('change', function() {
+    checkboxSubmit('bike', this.checked);
+  });
+  car.addEventListener('change', function() {
+    checkboxSubmit('car', this.checked);
+  });
+
+  const binding = new StringBinding(textarea, doc, ['example']);
+  binding.setup();
+
+  const textEditor = new HtmlTextCollabExt.CollaborativeTextEditor({
+    control: textarea,
+    onSelectionChanged: selection =>
+      updateCursorText([selection.anchor, selection.target], uid, 'example')
+  });
+  const binding2 = new StringBinding(textinput, doc, ['example2']);
+  binding2.setup();
+
+  const textEditor2 = new HtmlTextCollabExt.CollaborativeTextEditor({
+    control: textinput,
+    onSelectionChanged: selection =>
+      updateCursorText([selection.anchor, selection.target], uid, 'example2')
+  });
+
+  const selectionManager = textEditor.selectionManager();
+  const selectionManager2 = textEditor2.selectionManager();
+
+  doc.on('op', function(ops, source) {
+    if (source === quill) return;
+    ops.forEach(op => {
+      if (op.p[0] === 'text') {
+        quill.updateContents(op.o);
+      } else {
+        quill2.updateContents(op.o);
+      }
+    });
+  });
+
+  // When we receive information about updated presences,
+  // update the locall QuillCursor(s).
+  doc.on('presence', function(srcList, submitted) {
+    document.getElementById('presence').innerHTML = Object.values(doc.presence)
+      .map(x => `<li><b>${x.u}</b> - ${Stringify(x)}</li>`)
+      .join('');
+
+    srcList.forEach(function(src) {
+      if(!doc.presence[src]) return;
+
+      const {
+        presencePath,
+        presenceType,
+        subPresence
+      } = unpackPresence(doc.presence[src]);
+
+      if (subPresence.u) {
+        var userid = subPresence.u;
+        if (
+          userid !== uid &&
+          subPresence &&
+          subPresence.s &&
+          subPresence.s.length > 0
+        ) {
+          // TODO: Can QuillCursors support multiple selections?
+          var sel = subPresence.s[0];
+
+          // Use Math.abs because the sharedb presence type
+          // supports reverse selections, but I don't think
+          // Quill Cursors does.
+          var len = Math.abs(sel[1] - sel[0]);
+          var min = Math.min(sel[0], sel[1]);
+
+          // Re-creating an existing cursor is a no-op
+          if (presencePath && presencePath[0] === 'text') {
+            cursors.createCursor(userid, userid, uidColor(userid));
+            cursors.moveCursor(userid, { index: min, length: len });
+            cursors2.removeCursor(userid);
+            if (presence1[userid]) {
+              selectionManager.removeCollaborator(userid);
+              presence1[userid] = null;
+            }
+            if (presence2[userid]) {
+              selectionManager.removeCollaborator(userid);
+              presence1[userid] = null;
+            }
+          } else if (
+            presencePath &&
+            presencePath[0] === 'text2'
+          ) {
+            cursors2.createCursor(userid, userid, uidColor(userid));
+            cursors2.moveCursor(userid, { index: min, length: len });
+            cursors.removeCursor(userid);
+          } else if (
+            presencePath &&
+            presencePath[0] === 'example'
+          ) {
+            cursors2.removeCursor(userid);
+            cursors.removeCursor(userid);
+            if (presence2[userid]) {
+              selectionManager2.removeCollaborator(userid);
+              presence2[userid] = null;
+            }
+            if (!presence1[userid]) {
+              presence1[userid] = selectionManager.addCollaborator(
+                userid,
+                userid,
+                uidColor(userid)
+              );
+            }
+
+            presence1[userid].setSelection({ anchor: sel[0], target: sel[1] });
+            presence1[userid].flashCursorToolTip(2);
+          } else if (
+            presencePath &&
+            presencePath[0] === 'example2'
+          ) {
+            cursors2.removeCursor(userid);
+            cursors.removeCursor(userid);
+            if (presence1[userid]) {
+              selectionManager.removeCollaborator(userid);
+              presence1[userid] = null;
+            }
+            if (!presence2[userid]) {
+              presence2[userid] = selectionManager2.addCollaborator(
+                userid,
+                userid,
+                uidColor(userid)
+              );
+            }
+
+            presence2[userid].setSelection({ anchor: sel[0], target: sel[1] });
+            presence2[userid].flashCursorToolTip(2);
+          }
+        }
+      }
+    });
+  });
+
+  doc.on('presence', function(srcList, submitted) {
+    srcList.forEach(function(src) {
+      if(!doc.presence[src]) return;
+
+      const {
+        presencePath,
+        presenceType,
+        subPresence
+      } = unpackPresence(doc.presence[src]);
+
+      var userid = subPresence.u;
+      if (presencePath && presencePath[0] === 'car') {
+        carP[userid] = true;
+        bikeP[userid] = false;
+        updateCarBikeP();
+        cursors2.removeCursor(userid);
+        cursors.removeCursor(userid);
+        if (presence1[userid]) {
+          selectionManager.removeCollaborator(userid);
+          presence1[userid] = null;
+        }
+        if (presence2[userid]) {
+          selectionManager.removeCollaborator(userid);
+          presence2[userid] = null;
+        }
+      } else if (presencePath && presencePath[0] === 'bike') {
+        carP[userid] = false;
+        bikeP[userid] = true;
+        updateCarBikeP();
+        cursors2.removeCursor(userid);
+        cursors.removeCursor(userid);
+        if (presence1[userid]) {
+          selectionManager.removeCollaborator(userid);
+          presence1[userid] = null;
+        }
+        if (presence2[userid]) {
+          selectionManager.removeCollaborator(userid);
+          presence2[userid] = null;
+        }
+      } else {
+        carP[userid] = false;
+        bikeP[userid] = false;
+      }
+    });
+    updateCarBikeP();
+  });
+
+  // When the local Quill selection changes, publish our new
+  // local presence data.
+  quill.on('selection-change', function(range, oldRange, source) {
+    if (source === 'user') {
+      updateCursor(range, uid, 'text');
+    } else {
+      debouncedUpdate(range, uid, 'text');
+    }
+  });
+  quill2.on('selection-change', function(range, oldRange, source) {
+    if (source === 'user') {
+      updateCursor(range, uid, 'text2');
+    } else {
+      debouncedUpdate(range, uid, 'text2');
+    }
+  });
+});
+
+function updateCursorText(range, uid, text) {
+  if (range) {
+    doc.submitPresence([
+      text,
+      'rich-text',
+      {
+        u: uid,
+        c: 0,
+        s: [range]
+      }
+    ]);
+  }
+}
+
+function updateCursor(range, uid, text) {
+  if (range) {
+    doc.submitPresence([
+      text,
+      'rich-text',
+      {
+        u: uid,
+        c: 0,
+        s: [[range.index, range.index + range.length]]
+      }
+    ]);
+  }
+}
+
+var debouncedUpdate = debounce(updateCursor, 500);
+
+function debounce(func, wait) {
+  var timeout;
+  return function(...args) {
+    var context = this;
+    var later = function() {
+      timeout = null;
+      func.apply(context, args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+const checkboxSubmit = (field, value) => {
+  doc.submitPresence({
+    u: uid,
+    p: [field],
+    cursor: { s: [[]] }
+  });
+
+  doc.submitOp({ p: [field], oi: value });
+};
+
+const updateCarBikeP = () => {
+  carPresence.innerText =
+    Object.keys(carP)
+      .filter(x => carP[x])
+      .join(' - ') || '';
+  bikePresence.innerText =
+    Object.keys(bikeP)
+      .filter(x => bikeP[x])
+      .join(' - ') || '';
+};
+
+},{"@convergence/html-text-collab-ext":12,"@houshuang/ot-json0":2,"@teamwork/sharedb/lib/client":17,"json-stable-stringify":36,"quill":45,"quill-cursors":42,"rich-text":46,"sharedb-string-binding":48}],6:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.CollaborativeSelectionManager = void 0;
+
+var _CollaboratorSelection = require("./CollaboratorSelection");
+
+var _IndexUtils = require("./IndexUtils");
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
+
+function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
+
+function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
+
+var CollaborativeSelectionManager =
+/*#__PURE__*/
+function () {
+  function CollaborativeSelectionManager(options) {
+    var _this = this;
+
+    _classCallCheck(this, CollaborativeSelectionManager);
+
+    _defineProperty(this, "_collaborators", void 0);
+
+    _defineProperty(this, "_textElement", void 0);
+
+    _defineProperty(this, "_overlayContainer", void 0);
+
+    _defineProperty(this, "_scroller", void 0);
+
+    _defineProperty(this, "_onSelection", void 0);
+
+    _defineProperty(this, "_selectionAnchor", void 0);
+
+    _defineProperty(this, "_selectionTarget", void 0);
+
+    _defineProperty(this, "_checkSelection", function () {
+      setTimeout(function () {
+        var changed = _this._textElement.selectionStart !== _this._selectionAnchor || _this._textElement.selectionEnd !== _this._selectionTarget;
+
+        if (changed) {
+          if (_this._selectionAnchor === _this._textElement.selectionStart) {
+            _this._selectionAnchor = _this._textElement.selectionStart;
+            _this._selectionTarget = _this._textElement.selectionEnd;
+          } else {
+            _this._selectionAnchor = _this._textElement.selectionEnd;
+            _this._selectionTarget = _this._textElement.selectionStart;
+          }
+
+          _this._onSelection({
+            anchor: _this._selectionAnchor,
+            target: _this._selectionTarget
+          });
+        }
+      }, 0);
+    });
+
+    _defineProperty(this, "_onMouseMove", function () {
+      _this._checkResize();
+
+      _this._checkSelection();
+    });
+
+    _defineProperty(this, "_checkResize", function () {
+      if (_this._textElement.offsetWidth !== _this._overlayContainer.offsetWidth || _this._textElement.offsetHeight !== _this._overlayContainer.offsetHeight) {
+        _this._updateOverlay();
+
+        _this._collaborators.forEach(function (renderer) {
+          return renderer.refresh();
+        });
+      }
+    });
+
+    this._collaborators = new Map();
+    this._textElement = options.control; // TODO handle the line height better. The issue here
+    // is that the textarea-caret library can't handle
+    // a non-number.
+
+    var computed = window.getComputedStyle(this._textElement);
+
+    if (computed.lineHeight === "normal") {
+      throw new Error("Text areas must have a numeric line-height.");
+    }
+
+    this._onSelection = options.onSelectionChanged;
+    this._selectionAnchor = this._textElement.selectionStart;
+    this._selectionTarget = this._textElement.selectionEnd;
+    this._overlayContainer = this._textElement.ownerDocument.createElement("div");
+    this._overlayContainer.className = "text-collab-ext";
+
+    this._textElement.parentElement.append(this._overlayContainer);
+
+    this._scroller = this._textElement.ownerDocument.createElement("div");
+    this._scroller.className = "text-collab-ext-scroller";
+
+    this._overlayContainer.append(this._scroller); // Provide resize handling. After the mose down, we register for mouse
+    // movement and check if we have resized. We then listen for a mouse up
+    // to unregister.
+
+
+    this._textElement.addEventListener("mousedown", function () {
+      window.addEventListener("mousemove", _this._onMouseMove);
+    });
+
+    window.addEventListener("mouseup", function () {
+      window.removeEventListener("mousemove", _this._onMouseMove);
+
+      _this._checkResize();
+    });
+
+    this._textElement.addEventListener("scroll", function () {
+      return _this._updateScroller();
+    });
+
+    this._textElement.addEventListener("keydown", this._checkSelection);
+
+    this._textElement.addEventListener("click", this._checkSelection);
+
+    this._textElement.addEventListener("focus", this._checkSelection);
+
+    this._textElement.addEventListener("blur", this._checkSelection);
+
+    this._updateOverlay();
+  }
+
+  _createClass(CollaborativeSelectionManager, [{
+    key: "addCollaborator",
+    value: function addCollaborator(id, label, color, selection) {
+      if (this._collaborators.has(id)) {
+        throw new Error("A collaborator with the specified id already exists: ".concat(id));
+      }
+
+      var collaborator = new _CollaboratorSelection.CollaboratorSelection(this._textElement, this._scroller, color, label, {
+        margin: 5
+      });
+
+      this._collaborators.set(id, collaborator);
+
+      if (selection !== undefined && selection !== null) {
+        collaborator.setSelection(selection);
+      }
+
+      return collaborator;
+    }
+  }, {
+    key: "getCollaborator",
+    value: function getCollaborator(id) {
+      return this._collaborators.get(id);
+    }
+  }, {
+    key: "removeCollaborator",
+    value: function removeCollaborator(id) {
+      var renderer = this._collaborators.get(id);
+
+      if (renderer !== undefined) {
+        renderer.clearSelection();
+
+        this._collaborators.delete(id);
+      } else {
+        throw new Error("Unknown collaborator: ".concat(id));
+      }
+    }
+  }, {
+    key: "getSelection",
+    value: function getSelection() {
+      return {
+        anchor: this._selectionAnchor,
+        target: this._selectionTarget
+      };
+    }
+  }, {
+    key: "show",
+    value: function show() {
+      this._overlayContainer.style.visibility = "visible";
+    }
+  }, {
+    key: "hide",
+    value: function hide() {
+      this._overlayContainer.style.visibility = "hidden";
+    }
+  }, {
+    key: "dispose",
+    value: function dispose() {
+      this._overlayContainer.parentElement.removeChild(this._overlayContainer);
+    }
+  }, {
+    key: "updateSelectionsOnInsert",
+    value: function updateSelectionsOnInsert(index, value) {
+      this._collaborators.forEach(function (collaborator) {
+        var selection = collaborator.getSelection();
+
+        var anchor = _IndexUtils.IndexUtils.transformIndexOnInsert(selection.anchor, index, value);
+
+        var target = _IndexUtils.IndexUtils.transformIndexOnInsert(selection.target, index, value);
+
+        collaborator.setSelection({
+          anchor: anchor,
+          target: target
+        });
+      });
+    }
+  }, {
+    key: "updateSelectionsOnDelete",
+    value: function updateSelectionsOnDelete(index, length) {
+      this._collaborators.forEach(function (collaborator) {
+        var selection = collaborator.getSelection();
+
+        var anchor = _IndexUtils.IndexUtils.transformIndexOnDelete(selection.anchor, index, length);
+
+        var target = _IndexUtils.IndexUtils.transformIndexOnDelete(selection.target, index, length);
+
+        collaborator.setSelection({
+          anchor: anchor,
+          target: target
+        });
+      });
+    }
+  }, {
+    key: "_updateOverlay",
+    value: function _updateOverlay() {
+      var top = this._textElement.offsetTop;
+      var left = this._textElement.offsetLeft;
+      var height = this._textElement.offsetHeight;
+      var width = this._textElement.offsetWidth;
+      this._overlayContainer.style.top = top + "px";
+      this._overlayContainer.style.left = left + "px";
+      this._overlayContainer.style.height = height + "px";
+      this._overlayContainer.style.width = width + "px";
+    }
+  }, {
+    key: "_updateScroller",
+    value: function _updateScroller() {
+      this._scroller.style.top = this._textElement.scrollTop * -1 + "px";
+      this._scroller.style.left = this._textElement.scrollLeft * -1 + "px";
+    }
+  }]);
+
+  return CollaborativeSelectionManager;
+}();
+
+exports.CollaborativeSelectionManager = CollaborativeSelectionManager;
+},{"./CollaboratorSelection":8,"./IndexUtils":9}],7:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.CollaborativeTextEditor = void 0;
+
+var _CollaborativeSelectionManager = require("./CollaborativeSelectionManager");
+
+var _TextInputManager = require("./TextInputManager");
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
+
+function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
+
+function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
+
+var CollaborativeTextEditor =
+/*#__PURE__*/
+function () {
+  function CollaborativeTextEditor(options) {
+    var _this = this;
+
+    _classCallCheck(this, CollaborativeTextEditor);
+
+    _defineProperty(this, "_selectionManager", void 0);
+
+    _defineProperty(this, "_inputManager", void 0);
+
+    _defineProperty(this, "_onInsert", void 0);
+
+    _defineProperty(this, "_onDelete", void 0);
+
+    if (!options) {
+      throw new Error("options must be defined.");
+    }
+
+    if (!options.control) {
+      throw new Error("options.control must be defined.");
+    }
+
+    var control = options.control;
+    var insertCallback = options.onInsert;
+    var deleteCallback = options.onDelete;
+
+    var onInsert = function onInsert(index, value) {
+      _this._selectionManager.updateSelectionsOnInsert(index, value);
+
+      if (insertCallback) {
+        insertCallback(index, value);
+      }
+    };
+
+    var onDelete = function onDelete(index, length) {
+      _this._selectionManager.updateSelectionsOnDelete(index, length);
+
+      if (deleteCallback) {
+        deleteCallback(index, length);
+      }
+    };
+
+    var onSelectionChanged = options.onSelectionChanged !== undefined ? options.onSelectionChanged : function (selection) {};
+    this._inputManager = new _TextInputManager.TextInputManager({
+      control: control,
+      onInsert: onInsert,
+      onDelete: onDelete
+    });
+    this._selectionManager = new _CollaborativeSelectionManager.CollaborativeSelectionManager({
+      control: control,
+      onSelectionChanged: onSelectionChanged
+    });
+  }
+
+  _createClass(CollaborativeTextEditor, [{
+    key: "insertText",
+    value: function insertText(index, value) {
+      this._inputManager.insertText(index, value);
+
+      this._selectionManager.updateSelectionsOnInsert(index, value);
+    }
+  }, {
+    key: "deleteText",
+    value: function deleteText(index, length) {
+      this._inputManager.deleteText(index, length);
+
+      this._selectionManager.updateSelectionsOnDelete(index, length);
+    }
+  }, {
+    key: "setText",
+    value: function setText(value) {
+      this._inputManager.setText(value);
+    }
+  }, {
+    key: "getText",
+    value: function getText() {
+      return this._inputManager.getText();
+    }
+  }, {
+    key: "selectionManager",
+    value: function selectionManager() {
+      return this._selectionManager;
+    }
+  }]);
+
+  return CollaborativeTextEditor;
+}();
+
+exports.CollaborativeTextEditor = CollaborativeTextEditor;
+},{"./CollaborativeSelectionManager":6,"./TextInputManager":11}],8:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.CollaboratorSelection = void 0;
+
+var _SelectionComputer = require("./SelectionComputer");
+
+var _textareaCaret = _interopRequireDefault(require("textarea-caret"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
+
+function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
+
+function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
+
+var CollaboratorSelection =
+/*#__PURE__*/
+function () {
+  function CollaboratorSelection(textInput, overlayContainer, color, label, options) {
+    _classCallCheck(this, CollaboratorSelection);
+
+    _defineProperty(this, "_rows", void 0);
+
+    _defineProperty(this, "_cursorElement", void 0);
+
+    _defineProperty(this, "_tooltipElement", void 0);
+
+    _defineProperty(this, "_textInput", void 0);
+
+    _defineProperty(this, "_container", void 0);
+
+    _defineProperty(this, "_color", void 0);
+
+    _defineProperty(this, "_selection", void 0);
+
+    _defineProperty(this, "_cursor", void 0);
+
+    _defineProperty(this, "_label", void 0);
+
+    _defineProperty(this, "_margin", void 0);
+
+    _defineProperty(this, "_tooltipTimeout", void 0);
+
+    this._label = label;
+    this._textInput = textInput;
+    this._color = color;
+    this._cursor = null;
+    this._selection = null;
+    this._rows = [];
+    this._container = overlayContainer;
+    options = options || {};
+    this._margin = options.margin || 5;
+    this._tooltipTimeout = null;
+    this._cursorElement = this._container.ownerDocument.createElement("div");
+    this._cursorElement.className = "collaborator-cursor";
+    this._cursorElement.style.backgroundColor = this._color;
+    this._tooltipElement = this._container.ownerDocument.createElement("div");
+    this._tooltipElement.innerHTML = label;
+    this._tooltipElement.className = "collaborator-cursor-tooltip";
+    this._tooltipElement.style.backgroundColor = this._color;
+    this.hideCursorTooltip();
+    this.refresh();
+  }
+
+  _createClass(CollaboratorSelection, [{
+    key: "showSelection",
+    value: function showSelection() {
+      console.log("show selection");
+      var cursorCoords = (0, _textareaCaret.default)(this._textInput, this._cursor);
+      console.log(cursorCoords.left, this._container.offsetWidth);
+
+      if (cursorCoords.left < this._container.offsetWidth) {
+        console.log("yes");
+
+        this._rows.forEach(function (row) {
+          row.element.style.visibility = "visible";
+        });
+      }
+    }
+  }, {
+    key: "hideSelection",
+    value: function hideSelection() {
+      this._rows.forEach(function (row) {
+        row.element.style.visibility = "hidden";
+      });
+    }
+  }, {
+    key: "showCursor",
+    value: function showCursor() {
+      console.log("show cursor");
+      var cursorCoords = (0, _textareaCaret.default)(this._textInput, this._cursor);
+      console.log(cursorCoords.left, this._container.offsetWidth);
+
+      if (cursorCoords.left < this._container.offsetWidth) {
+        console.log("yes");
+
+        this._rows.forEach(function (row) {
+          row.element.style.visibility = "visible";
+        });
+      }
+
+      this._cursorElement.style.visibility = "visible";
+    }
+  }, {
+    key: "hideCursor",
+    value: function hideCursor() {
+      this._cursorElement.style.visibility = "hidden";
+    }
+  }, {
+    key: "showCursorToolTip",
+    value: function showCursorToolTip() {
+      this._clearToolTipTimeout();
+
+      this._tooltipElement.style.opacity = "1";
+    }
+  }, {
+    key: "flashCursorToolTip",
+    value: function flashCursorToolTip(duration) {
+      var _this = this;
+
+      this.showCursorToolTip();
+
+      this._clearToolTipTimeout();
+
+      this._tooltipTimeout = setTimeout(function () {
+        return _this.hideCursorTooltip();
+      }, duration * 1000);
+    }
+  }, {
+    key: "hideCursorTooltip",
+    value: function hideCursorTooltip() {
+      this._clearToolTipTimeout();
+
+      this._tooltipElement.style.opacity = "0";
+    }
+  }, {
+    key: "_clearToolTipTimeout",
+    value: function _clearToolTipTimeout() {
+      if (this._tooltipTimeout !== null) {
+        clearTimeout(this._tooltipTimeout);
+        this._tooltipTimeout = null;
+      }
+    }
+  }, {
+    key: "setColor",
+    value: function setColor(color) {
+      var _this2 = this;
+
+      this._color = color;
+
+      this._rows.forEach(function (row) {
+        row.element.style.background = _this2._color;
+      });
+
+      this._cursorElement.style.background = this._color;
+      this._tooltipElement.style.background = this._color;
+    }
+  }, {
+    key: "setSelection",
+    value: function setSelection(selection) {
+      if (selection === null) {
+        this._cursor = null;
+        this._selection = null;
+      } else {
+        this._cursor = selection.target;
+        this._selection = _objectSpread({}, selection);
+      }
+
+      this.refresh();
+    }
+  }, {
+    key: "getSelection",
+    value: function getSelection() {
+      return _objectSpread({}, this._selection);
+    }
+  }, {
+    key: "clearSelection",
+    value: function clearSelection() {
+      this.setSelection(null);
+    }
+  }, {
+    key: "refresh",
+    value: function refresh() {
+      this._updateCursor();
+
+      this._updateSelection();
+    }
+  }, {
+    key: "_updateCursor",
+    value: function _updateCursor() {
+      var cursorCoords = (0, _textareaCaret.default)(this._textInput, this._cursor);
+      console.log(cursorCoords.left, this._container.offsetWidth);
+
+      if (cursorCoords.left > this._container.offsetWidth) {
+        console.log("hide");
+        this.hideCursorTooltip();
+        this.hideSelection();
+        return;
+      }
+
+      if (this._cursor === null && this._container.contains(this._cursorElement)) {
+        console.log("remove");
+
+        this._container.removeChild(this._cursorElement);
+
+        this._container.removeChild(this._tooltipElement);
+      } else {
+        if (!this._cursorElement.parentElement) {
+          console.log("add");
+
+          this._container.append(this._cursorElement);
+
+          this._container.append(this._tooltipElement);
+        }
+
+        this._cursorElement.style.height = cursorCoords.height + "px";
+        this._cursorElement.style.top = cursorCoords.top + "px";
+        var cursorLeft = cursorCoords.left - this._cursorElement.offsetWidth / 2;
+        this._cursorElement.style.left = cursorLeft + "px";
+        var toolTipTop = cursorCoords.top - this._tooltipElement.offsetHeight;
+
+        if (toolTipTop + this._container.offsetTop < this._margin) {
+          toolTipTop = cursorCoords.top + cursorCoords.height;
+        }
+
+        var toolTipLeft = cursorLeft;
+
+        if (toolTipLeft + this._tooltipElement.offsetWidth > this._container.offsetWidth - this._margin) {
+          toolTipLeft = cursorLeft + this._cursorElement.offsetWidth - this._tooltipElement.offsetWidth;
+        }
+
+        this._tooltipElement.style.top = toolTipTop + "px";
+        this._tooltipElement.style.left = toolTipLeft + "px";
+      }
+    }
+  }, {
+    key: "_updateSelection",
+    value: function _updateSelection() {
+      var _this3 = this;
+
+      if (this._selection === null) {
+        this._rows.forEach(function (row) {
+          return row.element.parentElement.removeChild(row.element);
+        });
+
+        this._rows.splice(0, this._rows.length);
+      } else {
+        var start;
+        var end;
+
+        if (this._selection.anchor > this._selection.target) {
+          start = Number(this._selection.target);
+          end = Number(this._selection.anchor);
+        } else {
+          start = Number(this._selection.anchor);
+          end = Number(this._selection.target);
+        }
+
+        var newRows = _SelectionComputer.SelectionComputer.calculateSelection(this._textInput, start, end); // Adjust size of rows as needed
+
+
+        var delta = newRows.length - this._rows.length;
+
+        if (delta > 0) {
+          if (this._rows.length === 0 || this._rowsEqual(newRows[0], this._rows[0].rowData)) {
+            this._addNewRows(delta, true);
+          } else {
+            this._addNewRows(delta, false);
+          }
+        } else if (delta < 0) {
+          var removed = null;
+
+          if (this._rowsEqual(newRows[0], this._rows[0].rowData)) {
+            // Take from the target.
+            removed = this._rows.splice(this._rows.length - 1 + delta, delta * -1);
+          } else {
+            removed = this._rows.splice(0, delta * -1);
+          }
+
+          removed.forEach(function (row) {
+            return row.element.parentElement.removeChild(row.element);
+          });
+        } // Now compare each row and see if we need an update.
+
+
+        newRows.forEach(function (newRowData, index) {
+          var row = _this3._rows[index];
+
+          _this3._updateRow(newRowData, row);
+        });
+      }
+    }
+  }, {
+    key: "_addNewRows",
+    value: function _addNewRows(count, append) {
+      for (var i = 0; i < count; i++) {
+        var element = this._container.ownerDocument.createElement("div");
+
+        element.style.position = "absolute";
+        element.style.backgroundColor = this._color;
+        element.style.opacity = "0.25";
+
+        this._container.append(element);
+
+        var rowData = {
+          height: 0,
+          width: 0,
+          top: 0,
+          left: 0
+        };
+        var newRow = {
+          element: element,
+          rowData: rowData
+        };
+
+        if (append) {
+          this._rows.push(newRow);
+        } else {
+          this._rows.unshift(newRow);
+        }
+      }
+    }
+  }, {
+    key: "_rowsEqual",
+    value: function _rowsEqual(a, b) {
+      return a.height === b.height && a.width === b.width && a.top === b.top && a.left === b.left;
+    }
+  }, {
+    key: "_updateRow",
+    value: function _updateRow(newRowData, row) {
+      if (newRowData.height !== row.rowData.height) {
+        row.rowData.height = newRowData.height;
+        row.element.style.height = "".concat(newRowData.height, "px");
+      }
+
+      if (newRowData.width !== row.rowData.width) {
+        row.rowData.width = newRowData.width;
+        row.element.style.width = "".concat(newRowData.width, "px");
+      }
+
+      if (newRowData.top !== row.rowData.top) {
+        row.rowData.top = newRowData.top;
+        row.element.style.top = "".concat(newRowData.top, "px");
+      }
+
+      if (newRowData.left !== row.rowData.left) {
+        row.rowData.left = newRowData.left;
+        row.element.style.left = "".concat(newRowData.left, "px");
+      }
+    }
+  }]);
+
+  return CollaboratorSelection;
+}();
+
+exports.CollaboratorSelection = CollaboratorSelection;
+},{"./SelectionComputer":10,"textarea-caret":50}],9:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.IndexUtils = void 0;
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
+
+function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
+
+var IndexUtils =
+/*#__PURE__*/
+function () {
+  function IndexUtils() {
+    _classCallCheck(this, IndexUtils);
+  }
+
+  _createClass(IndexUtils, null, [{
+    key: "transformIndexOnInsert",
+    value: function transformIndexOnInsert(index, insertIndex, value) {
+      if (insertIndex <= index) {
+        return index + value.length;
+      }
+
+      return index;
+    }
+  }, {
+    key: "transformIndexOnDelete",
+    value: function transformIndexOnDelete(index, deleteIndex, length) {
+      if (index > deleteIndex) {
+        return index - Math.min(index - deleteIndex, length);
+      }
+
+      return index;
+    }
+  }]);
+
+  return IndexUtils;
+}();
+
+exports.IndexUtils = IndexUtils;
+},{}],10:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.SelectionComputer = void 0;
+
+var _textareaCaret = _interopRequireDefault(require("textarea-caret"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _toConsumableArray(arr) { return _arrayWithoutHoles(arr) || _iterableToArray(arr) || _nonIterableSpread(); }
+
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance"); }
+
+function _iterableToArray(iter) { if (Symbol.iterator in Object(iter) || Object.prototype.toString.call(iter) === "[object Arguments]") return Array.from(iter); }
+
+function _arrayWithoutHoles(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = new Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
+
+function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
+
+function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
+
+/*
+ * Computes the dimensions of the text selection.  Each line in the textarea has its own
+ * selection dimensions, which are intended to be used to render a div with the specified
+ * position, dimensions and background color.
+ *
+ * This has only been tested on a textarea, but should be able to be adapted to be used
+ * in other HTML form elements.
+ *
+ * TODO unit test, this is pretty brittle
+ */
+var SelectionComputer =
+/*#__PURE__*/
+function () {
+  _createClass(SelectionComputer, null, [{
+    key: "calculateSelection",
+    value: function calculateSelection(element, start, end) {
+      var computer = new SelectionComputer(element, start, end);
+      return computer.selectionRows;
+    } // The calculated styles for each row.
+
+  }]);
+
+  function SelectionComputer(element, start, end) {
+    _classCallCheck(this, SelectionComputer);
+
+    this.element = element;
+    this.start = start;
+    this.end = end;
+
+    _defineProperty(this, "selectionRows", void 0);
+
+    _defineProperty(this, "startCoordinates", void 0);
+
+    _defineProperty(this, "endCoordinates", void 0);
+
+    _defineProperty(this, "lineHeight", void 0);
+
+    _defineProperty(this, "elementPaddingLeft", void 0);
+
+    _defineProperty(this, "elementPaddingRight", void 0);
+
+    _defineProperty(this, "elementPaddingX", void 0);
+
+    this.startCoordinates = (0, _textareaCaret.default)(element, start);
+    this.endCoordinates = (0, _textareaCaret.default)(element, end);
+    this.lineHeight = this.startCoordinates.height;
+    this.elementPaddingLeft = parseFloat(element.style.paddingLeft) || 0;
+    this.elementPaddingRight = parseFloat(element.style.paddingRight) || 0;
+    this.elementPaddingX = this.elementPaddingLeft + this.elementPaddingRight;
+    this.selectionRows = []; // Figure out whether this selection spans more than one "row", as determined by
+    // the presence of a newline character. The computation of single line selections
+    // is slightly different than for multiple line selections.
+
+    var selectedText = element.value.substr(start, end - start);
+
+    if (selectedText.indexOf('\n') < 0) {
+      this.appendSingleLineSelection(this.startCoordinates, this.endCoordinates);
+    } else {
+      this.buildMultiRowSelection();
+    }
+  }
+
+  _createClass(SelectionComputer, [{
+    key: "appendSingleLineSelection",
+    value: function appendSingleLineSelection(startCoordinates, endCoordinates) {
+      var _this$selectionRows;
+
+      (_this$selectionRows = this.selectionRows).push.apply(_this$selectionRows, _toConsumableArray(this.buildSingleLineSelection(startCoordinates, endCoordinates)));
+    }
+  }, {
+    key: "buildSingleLineSelection",
+    value: function buildSingleLineSelection(startCoordinates, endCoordinates) {
+      // does this line wrap? If not, we can just calculate the row selection based on
+      // the provided coordinates.
+      if (startCoordinates.top === endCoordinates.top) {
+        return [{
+          width: endCoordinates.left - startCoordinates.left,
+          top: startCoordinates.top,
+          left: startCoordinates.left,
+          height: this.lineHeight
+        }];
+      } else {
+        return this.buildWrappedLineSelections(startCoordinates, endCoordinates);
+      }
+    }
+    /**
+     * Wrapped lines have a more complex computation since we have to create multiple
+     * rows.
+     *
+     * @param startCoordinates
+     * @param endCoordinates
+     */
+
+  }, {
+    key: "buildWrappedLineSelections",
+    value: function buildWrappedLineSelections(startCoordinates, endCoordinates) {
+      var rows = []; // the first line just goes the full width of the textarea
+
+      rows.push({
+        width: this.element.scrollWidth - this.elementPaddingRight - startCoordinates.left,
+        top: startCoordinates.top,
+        left: startCoordinates.left,
+        height: this.lineHeight
+      }); // If the selection contains one or more rows that span the entire textarea,
+      // calculate a single selection element, which may actually span multiple rows,
+      // but fills the width of the textarea.
+
+      if (endCoordinates.top > startCoordinates.top + this.lineHeight) {
+        rows.push({
+          width: this.element.scrollWidth - this.elementPaddingX,
+          left: this.elementPaddingLeft,
+          top: startCoordinates.top + this.lineHeight,
+          height: endCoordinates.top - startCoordinates.top - this.lineHeight
+        });
+      } // The last line starts at the left edge of the textarea and doesn't span the
+      // entire width of the textarea
+
+
+      rows.push({
+        width: endCoordinates.left - this.elementPaddingLeft,
+        top: endCoordinates.top,
+        left: this.elementPaddingLeft,
+        height: this.lineHeight
+      });
+      return rows;
+    }
+  }, {
+    key: "buildMultiRowSelection",
+    value: function buildMultiRowSelection() {
+      var currentCoordinates = this.startCoordinates;
+      var currentIndex = +this.start; // build one or more selection elements for each row (as determined by newline
+      // characters)
+
+      while (currentCoordinates.top < this.endCoordinates.top) {
+        var nextLineBreakPosition = this.element.value.indexOf('\n', currentIndex);
+        var endOfLinePosition = this.element.value.length;
+
+        if (nextLineBreakPosition >= 0) {
+          endOfLinePosition = nextLineBreakPosition;
+        }
+
+        if (endOfLinePosition > this.end) {
+          endOfLinePosition = this.end;
+        }
+
+        var endOfLineCoordinates = (0, _textareaCaret.default)(this.element, endOfLinePosition); // console.log('target of line position', endOfLinePosition, 'coords', endOfLineCoordinates);
+        // This "single line" may actually wrap multiple lines of the textarea
+
+        this.appendSingleLineSelection(currentCoordinates, endOfLineCoordinates);
+        currentIndex = endOfLinePosition + 1;
+        currentCoordinates = (0, _textareaCaret.default)(this.element, currentIndex);
+      }
+
+      if (currentIndex < this.end) {
+        var lastLine = {
+          width: this.endCoordinates.left - currentCoordinates.left,
+          top: currentCoordinates.top,
+          left: currentCoordinates.left,
+          height: this.lineHeight
+        };
+        this.selectionRows.push(lastLine);
+      }
+    }
+  }]);
+
+  return SelectionComputer;
+}();
+
+exports.SelectionComputer = SelectionComputer;
+},{"textarea-caret":50}],11:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.TextInputManager = void 0;
+
+var _stringChangeDetector = _interopRequireDefault(require("@convergence/string-change-detector"));
+
+var _IndexUtils = require("./IndexUtils");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
+
+function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
+
+function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
+
+var TextInputManager =
+/*#__PURE__*/
+function () {
+  /**
+   *
+   * @param options
+   */
+  function TextInputManager(options) {
+    var _this = this;
+
+    _classCallCheck(this, TextInputManager);
+
+    _defineProperty(this, "_control", void 0);
+
+    _defineProperty(this, "_onLocalInsert", void 0);
+
+    _defineProperty(this, "_onLocalDelete", void 0);
+
+    _defineProperty(this, "_changeDetector", void 0);
+
+    _defineProperty(this, "_onLocalInput", function () {
+      _this._changeDetector.processNewValue(_this._control.value);
+    });
+
+    this._control = options.control;
+    this._onLocalInsert = options.onInsert;
+    this._onLocalDelete = options.onDelete;
+    this._changeDetector = null;
+    this.bind();
+  }
+
+  _createClass(TextInputManager, [{
+    key: "bind",
+    value: function bind() {
+      this._changeDetector = new _stringChangeDetector.default({
+        value: this._control.value,
+        onInsert: this._onLocalInsert,
+        onRemove: this._onLocalDelete
+      });
+
+      this._control.addEventListener("input", this._onLocalInput);
+    }
+  }, {
+    key: "unbind",
+    value: function unbind() {
+      this._control.removeEventListener("input", this._onLocalInput);
+
+      this._changeDetector = null;
+    }
+  }, {
+    key: "insertText",
+    value: function insertText(index, value) {
+      this._assertBound();
+
+      var _this$_getSelection = this._getSelection(),
+          start = _this$_getSelection.start,
+          end = _this$_getSelection.end;
+
+      var xStart = _IndexUtils.IndexUtils.transformIndexOnInsert(start, index, value);
+
+      var xEnd = _IndexUtils.IndexUtils.transformIndexOnInsert(end, index, value);
+
+      this._changeDetector.insertText(index, value);
+
+      this._updateControl();
+
+      this._setTextSelection(xStart, xEnd);
+    }
+  }, {
+    key: "deleteText",
+    value: function deleteText(index, length) {
+      this._assertBound();
+
+      var _this$_getSelection2 = this._getSelection(),
+          start = _this$_getSelection2.start,
+          end = _this$_getSelection2.end;
+
+      var xStart = _IndexUtils.IndexUtils.transformIndexOnDelete(start, index, length);
+
+      var xEnd = _IndexUtils.IndexUtils.transformIndexOnDelete(end, index, length);
+
+      this._changeDetector.removeText(index, length);
+
+      this._updateControl();
+
+      this._setTextSelection(xStart, xEnd);
+    }
+  }, {
+    key: "setText",
+    value: function setText(value) {
+      this._assertBound();
+
+      this._changeDetector.setValue(value);
+
+      this._updateControl();
+
+      this._setTextSelection(0, 0);
+    }
+  }, {
+    key: "getText",
+    value: function getText() {
+      return this._control.value;
+    }
+  }, {
+    key: "_updateControl",
+    value: function _updateControl() {
+      this._control.value = this._changeDetector.getValue();
+    }
+  }, {
+    key: "_assertBound",
+    value: function _assertBound() {
+      if (this._changeDetector === null) {
+        throw new Error("The TextInputManager is not bound.");
+      }
+    }
+  }, {
+    key: "_getSelection",
+    value: function _getSelection() {
+      return {
+        'start': this._control.selectionStart,
+        'end': this._control.selectionEnd
+      };
+    }
+  }, {
+    key: "_setTextSelection",
+    value: function _setTextSelection(start, end) {
+      // this._control.focus();
+      this._control.setSelectionRange(start, end);
+    }
+  }]);
+
+  return TextInputManager;
+}();
+
+exports.TextInputManager = TextInputManager;
+},{"./IndexUtils":9,"@convergence/string-change-detector":14}],12:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _CollaborativeSelectionManager = require("./CollaborativeSelectionManager");
+
+Object.keys(_CollaborativeSelectionManager).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function get() {
+      return _CollaborativeSelectionManager[key];
+    }
+  });
+});
+
+var _CollaboratorSelection = require("./CollaboratorSelection");
+
+Object.keys(_CollaboratorSelection).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function get() {
+      return _CollaboratorSelection[key];
+    }
+  });
+});
+
+var _TextInputManager = require("./TextInputManager");
+
+Object.keys(_TextInputManager).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function get() {
+      return _TextInputManager[key];
+    }
+  });
+});
+
+var _CollaborativeTextEditor = require("./CollaborativeTextEditor");
+
+Object.keys(_CollaborativeTextEditor).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function get() {
+      return _CollaborativeTextEditor[key];
+    }
+  });
+});
+},{"./CollaborativeSelectionManager":6,"./CollaborativeTextEditor":7,"./CollaboratorSelection":8,"./TextInputManager":11}],13:[function(require,module,exports){
+/**!
+© 2017 Convergence Labs, Inc.
+@version 0.1.8
+@license MIT
+*/
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var StringChangeDetector = exports.StringChangeDetector = function () {
+  function StringChangeDetector(options) {
+    _classCallCheck(this, StringChangeDetector);
+
+    if (!options) {
+      throw new Error("options must be defined");
+    }
+
+    if (typeof options.onInsert !== "function") {
+      throw new Error("options.onInsert must be a function");
+    }
+
+    if (typeof options.onRemove !== "function") {
+      throw new Error("options.onRemove must be a function");
+    }
+
+    if (typeof options.value !== "string") {
+      throw new Error("options.value must be a string");
+    }
+
+    this._onInsert = options.onInsert;
+    this._onRemove = options.onRemove;
+    this._value = options.value;
+  }
+
+  /**
+   * Inserts a string into the current value at the specified index.
+   *
+   * @param index {number}
+   *    The index in the string to insert into.
+   * @param value {string}
+   *   The value to insert into the string.
+   */
+
+
+  _createClass(StringChangeDetector, [{
+    key: "insertText",
+    value: function insertText(index, value) {
+      var oldVal = this._value;
+      var newVal = oldVal.substring(0, index) + value + oldVal.substring(index, oldVal.length);
+      this.setValue(newVal);
+    }
+
+    /**
+     * Removes a specified number of characters from the current string at
+     * a specific location.
+     *
+     * @param index {number}
+     *    The index in the string to remove characters.
+     * @param length {number}
+     *   The number of characters to remove.
+     */
+
+  }, {
+    key: "removeText",
+    value: function removeText(index, length) {
+      var oldVal = this._value;
+      var newVal = oldVal.substring(0, index) + oldVal.substring(index + length, oldVal.length);
+      this.setValue(newVal);
+    }
+
+    /**
+     * Sets the current value of the string.
+     *
+     * @param value {string}
+     *   The new value of the string.
+     */
+
+  }, {
+    key: "setValue",
+    value: function setValue(value) {
+      this._value = value;
+    }
+
+    /**
+     * Gets the current value of the string.
+     *
+     * @returns {string}
+     */
+
+  }, {
+    key: "getValue",
+    value: function getValue() {
+      return this._value;
+    }
+
+    /**
+     * Process the new value of the string after a single edit.
+     *
+     * @param newValue {string}
+     *   The new value to process.
+     */
+
+  }, {
+    key: "processNewValue",
+    value: function processNewValue(newValue) {
+      var commonEnd = 0;
+      var commonStart = 0;
+
+      if (this._value === newValue) {
+        return;
+      }
+
+      while (this._value.charAt(commonStart) === newValue.charAt(commonStart)) {
+        commonStart++;
+      }
+
+      while (this._value.charAt(this._value.length - 1 - commonEnd) === newValue.charAt(newValue.length - 1 - commonEnd) && commonEnd + commonStart < this._value.length && commonEnd + commonStart < newValue.length) {
+        commonEnd++;
+      }
+
+      // Characters were removed.
+      if (this._value.length !== commonStart + commonEnd) {
+        if (this._onRemove) {
+          this._onRemove(commonStart, this._value.length - commonStart - commonEnd);
+        }
+      }
+
+      // Characters were added
+      if (newValue.length !== commonStart + commonEnd) {
+        if (this._onInsert) {
+          this._onInsert(commonStart, newValue.slice(commonStart, newValue.length - commonEnd));
+        }
+      }
+
+      this._value = newValue;
+    }
+  }]);
+
+  return StringChangeDetector;
+}();
+
+
+},{}],14:[function(require,module,exports){
+/**!
+© 2017 Convergence Labs, Inc.
+@version 0.1.8
+@license MIT
+*/
+'use strict';
+
+module.exports = require('./StringChangeDetector').StringChangeDetector;
+
+
+},{"./StringChangeDetector":13}],15:[function(require,module,exports){
 (function (process){
 var Doc = require('./doc');
 var Query = require('./query');
@@ -5556,7 +5691,7 @@ exports.register = function(type) {
 
 exports.register(exports.defaultType);
 
-},{"@houshuang/ot-json0":12}],25:[function(require,module,exports){
+},{"@houshuang/ot-json0":2}],25:[function(require,module,exports){
 
 exports.doNothing = doNothing;
 function doNothing() {}
@@ -22263,4 +22398,4 @@ if (typeof module != 'undefined' && typeof module.exports != 'undefined') {
 
 }());
 
-},{}]},{},[1]);
+},{}]},{},[5]);

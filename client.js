@@ -1,13 +1,11 @@
 var sharedb = require('@teamwork/sharedb/lib/client');
 var richText = require('rich-text');
-var json0 = require('@houshuang/ot-json0');
+var json0 = require('ot-json0');
 var Quill = require('quill');
 var QuillCursors = require('quill-cursors');
 var Stringify = require('json-stable-stringify');
 var HtmlTextCollabExt = require('@convergence/html-text-collab-ext');
 var StringBinding = require('sharedb-string-binding');
-
-const { unpackPresence } = json0.type;
 
 Quill.register('modules/cursors', QuillCursors);
 
@@ -201,11 +199,11 @@ doc.subscribe(function(err) {
     srcList.forEach(function(src) {
       if(!doc.presence[src]) return;
 
-      const {
-        presencePath,
-        presenceType,
-        subPresence
-      } = unpackPresence(doc.presence[src]);
+      const presence = doc.presence[src];
+      console.log(presence);
+      const presencePath = presence.p;
+      const presenceType = presence.t;
+      const subPresence = presence.s;
 
       if (subPresence.u) {
         var userid = subPresence.u;
@@ -294,11 +292,10 @@ doc.subscribe(function(err) {
     srcList.forEach(function(src) {
       if(!doc.presence[src]) return;
 
-      const {
-        presencePath,
-        presenceType,
-        subPresence
-      } = unpackPresence(doc.presence[src]);
+      const presence = doc.presence[src];
+      const presencePath = presence.p;
+      const presenceType = presence.t;
+      const subPresence = presence.s;
 
       var userid = subPresence.u;
       if (presencePath && presencePath[0] === 'car') {
@@ -357,29 +354,29 @@ doc.subscribe(function(err) {
 
 function updateCursorText(range, uid, text) {
   if (range) {
-    doc.submitPresence([
-      text,
-      'rich-text',
-      {
+    doc.submitPresence({
+      p: [text],
+      t: 'rich-text',
+      s: {
         u: uid,
         c: 0,
         s: [range]
       }
-    ]);
+    });
   }
 }
 
 function updateCursor(range, uid, text) {
   if (range) {
-    doc.submitPresence([
-      text,
-      'rich-text',
-      {
+    doc.submitPresence({
+      p: [text],
+      t: 'rich-text',
+      s: {
         u: uid,
         c: 0,
         s: [[range.index, range.index + range.length]]
       }
-    ]);
+    });
   }
 }
 

@@ -741,9 +741,6 @@ json.transformComponent = function(dest, c, otherC, type) {
   return dest;
 };
 
-// TODO validate this.
-// Note that this is the same data passed into doc.submitPresence,
-// and we rely on developers passing in the correct structure here.
 json.createPresence = function(presenceData) {
   return presenceData;
 };
@@ -847,61 +844,28 @@ json.comparePresence = function(pres1, pres2) {
 // };
 //
 
-const unpackPresence = presence => {
-  if(!presence.slice) {
-    console.log('Expected presence to be an array. Received:');
-    console.log(presence);
-  }
-  return {
-    presencePath: presence.slice(0, presence.length - 2),
-    presenceType: presence[presence.length - 2],
-    subPresence: presence[presence.length - 1]
-  };
-};
-
-json.unpackPresence = unpackPresence;
-
 json.transformPresence = function(presence, op, isOwnOp) {
-  if (op.length === 0) return presence;
+  // Don't transform path-only presence objects.
+  if(!presence.t) return presence;
 
-  const { presencePath, presenceType, subPresence } = unpackPresence(presence);
+  for (var i = 0; i < op.length; i++) {
+    var c = op[i];
 
-  // TODO integrate any valid ideas from here.
-  //for (let c of op){
-  //  if(c.si || c.sd){
-  //    convertFromText(c)
-  //  }
-  //  if(c.t === 'text0') {
-  //    //json.canOpAffectPath = function(op, path) {
-  //    presence = Object.assign({}, presence, {
-  //      s: presence.s.map(selection => {
-  //        const path = selection.slice(0, selection.length - 2);
-  //        if(canOpAffectPath(c, path)) {
-  //          const [start, end] = selection.slice(selection.length - 2);
-  //          return path.concat([
-  //            transformCursor(start, c.o),
-  //            transformCursor(end, c.o),
-  //          ]);
-  //        }
-  //        return selection;
-  //      })
-  //    });
-  //  }
-  //}
-  // "c" stands for op "component".
-  for(let c of op) {
+    // convert old string ops to use subtype for backwards compatibility
+    if (c.si != null || c.sd != null) {
+      convertFromText(c);
+    }
 
     // Transform against subtype ops.
-    if (c.t) {
-      if(json.canOpAffectPath(c, presencePath)) {
-        // TODO test this check
-        //if(subPresenceType === c.t) {
-        return presencePath.concat(
-          presenceType,
-          subtypes[presenceType].transformPresence(subPresence, c.o, isOwnOp)
-        );
-        //}
-      }
+    if (c.t && c.t === presence.t && json.pathMatches(c.p, presence.p)) {
+      presence = Object.assign({}, presence, {
+        s: subtypes[presence.t].transformPresence(presence.s, c.o, isOwnOp)
+      });
+    }
+
+    // convert back to old string ops
+    if (c.t === 'text0') {
+      convertToText(c);
     }
 
     // TODO transform against non-subtype ops.
@@ -918,6 +882,7 @@ var text = require('./text0');
 
 json.registerSubtype(text);
 module.exports = json;
+
 
 },{"./bootstrapTransform":1,"./text0":4}],4:[function(require,module,exports){
 // DEPRECATED!
@@ -1175,19 +1140,47 @@ text.invert = function(op) {
   return op;
 };
 
+text.createPresence = function(presenceData) {
+  return presenceData;
+};
+
+// Draws from https://github.com/Teamwork/ot-rich-text/blob/master/src/Operation.js
+text.transformPresence = function(presence, operation, isOwnOperation) {
+  var user = presence.u;
+  var change = presence.c;
+  var selections = presence.s;
+  var side = isOwnOperation ? 'right' : 'left';
+  var newSelections = new Array(selections.length);
+
+  for (var i = 0, l = selections.length; i < l; ++i) {
+    newSelections[i] = [
+      text.transformCursor(selections[i][0], operation, side),
+      text.transformCursor(selections[i][1], operation, side)
+    ];
+  }
+
+  return {
+    u: user,
+    c: change,
+    s: newSelections
+  }
+}
+
+text.comparePresence = function(pres1, pres2) {
+  return JSON.stringify(pres1) === JSON.stringify(pres2);
+};
+
 require('./bootstrapTransform')(text, transformComponent, checkValidOp, append);
 
 },{"./bootstrapTransform":1}],5:[function(require,module,exports){
 var sharedb = require('@teamwork/sharedb/lib/client');
 var richText = require('rich-text');
-var json0 = require('@houshuang/ot-json0');
+var json0 = require('ot-json0');
 var Quill = require('quill');
 var QuillCursors = require('quill-cursors');
 var Stringify = require('json-stable-stringify');
 var HtmlTextCollabExt = require('@convergence/html-text-collab-ext');
 var StringBinding = require('sharedb-string-binding');
-
-const { unpackPresence } = json0.type;
 
 Quill.register('modules/cursors', QuillCursors);
 
@@ -1381,11 +1374,11 @@ doc.subscribe(function(err) {
     srcList.forEach(function(src) {
       if(!doc.presence[src]) return;
 
-      const {
-        presencePath,
-        presenceType,
-        subPresence
-      } = unpackPresence(doc.presence[src]);
+      const presence = doc.presence[src];
+      console.log(presence);
+      const presencePath = presence.p;
+      const presenceType = presence.t;
+      const subPresence = presence.s;
 
       if (subPresence.u) {
         var userid = subPresence.u;
@@ -1474,11 +1467,10 @@ doc.subscribe(function(err) {
     srcList.forEach(function(src) {
       if(!doc.presence[src]) return;
 
-      const {
-        presencePath,
-        presenceType,
-        subPresence
-      } = unpackPresence(doc.presence[src]);
+      const presence = doc.presence[src];
+      const presencePath = presence.p;
+      const presenceType = presence.t;
+      const subPresence = presence.s;
 
       var userid = subPresence.u;
       if (presencePath && presencePath[0] === 'car') {
@@ -1537,29 +1529,29 @@ doc.subscribe(function(err) {
 
 function updateCursorText(range, uid, text) {
   if (range) {
-    doc.submitPresence([
-      text,
-      'rich-text',
-      {
+    doc.submitPresence({
+      p: [text],
+      t: 'rich-text',
+      s: {
         u: uid,
         c: 0,
         s: [range]
       }
-    ]);
+    });
   }
 }
 
 function updateCursor(range, uid, text) {
   if (range) {
-    doc.submitPresence([
-      text,
-      'rich-text',
-      {
+    doc.submitPresence({
+      p: [text],
+      t: 'rich-text',
+      s: {
         u: uid,
         c: 0,
         s: [[range.index, range.index + range.length]]
       }
-    ]);
+    });
   }
 }
 
@@ -1599,7 +1591,7 @@ const updateCarBikeP = () => {
       .join(' - ') || '';
 };
 
-},{"@convergence/html-text-collab-ext":12,"@houshuang/ot-json0":2,"@teamwork/sharedb/lib/client":17,"json-stable-stringify":36,"quill":45,"quill-cursors":42,"rich-text":46,"sharedb-string-binding":48}],6:[function(require,module,exports){
+},{"@convergence/html-text-collab-ext":12,"@teamwork/sharedb/lib/client":17,"json-stable-stringify":36,"ot-json0":2,"quill":45,"quill-cursors":42,"rich-text":46,"sharedb-string-binding":48}],6:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {

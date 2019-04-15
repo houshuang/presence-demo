@@ -3,16 +3,16 @@ var express = require('express');
 var ShareDB = require('@teamwork/sharedb');
 var WebSocket = require('ws');
 var WebSocketJSONStream = require('@teamwork/websocket-json-stream');
-var ShareDBMongo = require('@teamwork/sharedb-mongo');
+//var ShareDBMongo = require('@teamwork/sharedb-mongo');
 var richText = require('rich-text');
-var json0 = require('@houshuang/ot-json0');
+var json0 = require('ot-json0');
 
 json0.type.registerSubtype(richText.type);
 ShareDB.types.register(json0.type);
 
-const dbUrl = 'mongodb://localhost:27017/cursors';
-const db = ShareDBMongo(dbUrl);
-var backend = new ShareDB({ db });
+// const dbUrl = 'mongodb://localhost:27017/cursors';
+// const db = ShareDBMongo(dbUrl);
+var backend = new ShareDB();
 createDoc(startServer);
 
 // Create initial document then fire callback
